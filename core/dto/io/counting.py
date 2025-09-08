@@ -1,9 +1,8 @@
-from pydantic import BaseModel, ConfigDict
-
+from core.dto.io._base import BaseIOModel
 from core.types import CountingItem, ExchangeName, Region, RequestType
 
 
-class BatchPayload(BaseModel):
+class BatchPayload(BaseIOModel):
     """카운팅 배치 페이로드 (Pydantic v2 모델).
 
     - 카운팅 아이템 목록과 범위 메타데이터를 포함합니다.
@@ -16,10 +15,8 @@ class BatchPayload(BaseModel):
     items: CountingItem
     version: int
 
-    model_config = ConfigDict(extra="forbid")
 
-
-class MarketSocketCountingPayload(BaseModel):
+class MarketSocketCountingPayload(BaseIOModel):
     """마켓 소켓 카운팅 메시지 페이로드 (Pydantic v2 모델).
 
     - region/exchange/request_type 메타와 배치 본문을 포함합니다.
@@ -30,5 +27,3 @@ class MarketSocketCountingPayload(BaseModel):
     exchange: ExchangeName
     request_type: RequestType
     batch: BatchPayload
-
-    model_config = ConfigDict(extra="forbid")

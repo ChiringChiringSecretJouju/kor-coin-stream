@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+from core.dto.io._base import BaseIOModel
 
 from core.types import SocketParams
 
@@ -14,7 +15,7 @@ from core.types import SocketParams
 """
 
 
-class ConnectRequestEvent(BaseModel):
+class ConnectRequestEvent(BaseIOModel):
     """연결 요청 이벤트 스키마(IO 모델)."""
 
     socket_mode: str
@@ -23,19 +24,15 @@ class ConnectRequestEvent(BaseModel):
     realtime_only: bool
     correlation_id: str | None = None
 
-    model_config = ConfigDict(extra="forbid")
 
-
-class Connection(BaseModel):
+class Connection(BaseIOModel):
     """연결 스키마(IO 모델)."""
 
     url: str
     socket_params: SocketParams
 
-    model_config = ConfigDict(extra="forbid")
 
-
-class CommandPayload(BaseModel):
+class CommandPayload(BaseIOModel):
     """명령 스키마(IO 모델)."""
 
     type: str

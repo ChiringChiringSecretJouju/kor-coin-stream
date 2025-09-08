@@ -4,19 +4,16 @@ import asyncio
 import logging
 import queue
 import sys
-import tracemalloc
 from datetime import datetime
 from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-tracemalloc.start()
-
 
 def ensure_file_exists(file_path: str) -> None:
     """
-    주어진 파일 경로에 파일이 존재하지 않으면 새로 생성하고,
-    파일이 위치할 폴더가 없으면 폴더를 생성합니다.
+    주어진 파일 경로의 상위 폴더가 없으면 생성합니다.
+    (파일 자체는 핸들러가 생성하도록 두어 불필요한 I/O를 줄입니다.)
 
     Args:
         file_path (str): 파일 경로
@@ -29,10 +26,7 @@ def ensure_file_exists(file_path: str) -> None:
     # 폴더가 존재하지 않으면 폴더 생성
     if not folder_path.exists():
         folder_path.mkdir(parents=True, exist_ok=True)
-
-    # 파일이 존재하지 않으면 새로 생성
-    if not path.exists():
-        path.touch()  # 파일 생성
+    # 파일은 핸들러가 생성합니다.
 
 
 class PipelineLogger:
@@ -41,28 +35,18 @@ class PipelineLogger:
     비동기 처리, 컴포넌트별 로깅, 성능 모니터링 기능 제공
     """
 
-    _instances: dict[str, PipelineLogger] = {}
     _default_level = logging.INFO
 
     @classmethod
-    def get_logger(cls, name: str, component: str | None = None, **kwargs) -> PipelineLogger:
+    def get_logger(
+        cls, name: str, component: str | None = None, **kwargs
+    ) -> PipelineLogger:
         """
-        로거 인스턴스를 반환하는 팩토리 메서드 (싱글톤 패턴 적용)
-
-        Args:
-            name: 로거 이름
-            component: 컴포넌트 이름 (예: 'exchange', 'event_bus', 'connection')
-            **kwargs: 추가 설정
-
-        Returns:
-            PipelineLogger: 로거 인스턴스
+        로거 인스턴스를 반환하는 간단한 팩토리 메서드.
+        표준 logging.getLogger가 이름 단위로 사실상 싱글톤이므로
+        별도 레지스트리 없이 인스턴스를 생성합니다.
         """
-        key = f"{name}.{component if component else 'root'}"
-
-        if key not in cls._instances:
-            cls._instances[key] = cls(name, component, **kwargs)
-
-        return cls._instances[key]
+        return cls(name, component, **kwargs)
 
     def __init__(
         self,
@@ -73,7 +57,6 @@ class PipelineLogger:
         log_to_console: bool = True,
         log_dir: str = "logs",
         rotation: str = "midnight",
-        location2: str | None = None,
     ):
         """
         로거 초기화
@@ -86,7 +69,6 @@ class PipelineLogger:
             log_to_console: 콘솔에 로깅 여부
             log_dir: 로그 디렉토리
             rotation: 로그 로테이션 주기
-            location2: 로그 파일의 추가 위치
         """
         self.name = name
         self.component = component
@@ -95,19 +77,18 @@ class PipelineLogger:
         self.log_to_console = log_to_console
         self.log_dir = log_dir
         self.rotation = rotation
-        self.location2: str | None = location2
 
         # 로깅 큐 및 컨텍스트 초기화 (무제한 버퍼로 설정해 queue.Full 예외 방지)
         self.log_queue: queue.Queue = queue.Queue()  # unlimited buffer
         self.context: dict[str, Any] = {}
 
         # 로거 및 핸들러 설정
-        self._setup_logger(location2)
+        self._setup_logger()
 
         # 비동기 이벤트 루프 참조 (필요시 설정)
         self._loop: asyncio.AbstractEventLoop | None = None
 
-    def _setup_logger(self, location2: str | None = None) -> None:
+    def _setup_logger(self) -> None:
         """
         로거, 핸들러, 포맷터 설정
         """
@@ -121,9 +102,9 @@ class PipelineLogger:
         if self.logger.hasHandlers():
             self.logger.handlers.clear()
 
-        # 포맷터 설정
+        # 포맷터 설정 (간결화)
         self.formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - [%(component)s] [%(exchange)s] - %(message)s"
+            "%(asctime)s %(levelname)s %(name)s [%(component)s] %(message)s"
         )
 
         # 핸들러 설정
@@ -135,8 +116,9 @@ class PipelineLogger:
             handlers.append(console)
 
         if self.log_to_file:
-            log_filename = self._get_log_filename(location2=location2)
-            ensure_file_exists(log_filename)
+            log_filename = self._get_log_filename()
+            # 디렉터리만 생성하고 파일 생성은 핸들러에 위임
+            Path(log_filename).parent.mkdir(parents=True, exist_ok=True)
 
             file_handler = TimedRotatingFileHandler(
                 filename=log_filename,
@@ -155,17 +137,13 @@ class PipelineLogger:
         )
         self.listener.start()
 
-    def _get_log_filename(self, location2: str | None = None) -> str:
+    def _get_log_filename(self) -> str:
         """
         로그 파일 이름 생성
         """
         today = datetime.now().strftime("%Y-%m-%d")
         component_part = f"{self.component}/" if self.component else ""
-        # location2가 비어 있지 않으면 로그 디렉토리 바로 아래에 파일을 생성
         path = f"{self.log_dir}"
-        if location2 is not None:
-            path = f"{path}/{location2}"
-
         return f"{path}/{component_part}{self.name}_{today}.log"
 
     def set_context(self, **kwargs) -> None:
@@ -180,7 +158,9 @@ class PipelineLogger:
         """
         self.context.clear()
 
-    def _process_message(self, level: int, msg: str, extra: dict[str, Any] | None = None) -> None:
+    def _process_message(
+        self, level: int, msg: str, extra: dict[str, Any] | None = None
+    ) -> None:
         """
         메시지 처리 및 로깅
         """
@@ -198,17 +178,16 @@ class PipelineLogger:
     async def alog(self, level: int, msg: str, **kwargs) -> None:
         """
         비동기적으로 로그 메시지 기록
+        - 실행 중인 이벤트 루프가 있으면 스레드 풀로 위임
+        - 루프가 없으면 동기 처리(로그는 QueueHandler로 빠르게 반환)
         """
-        if self._loop is None:
-            try:
-                self._loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-
-        await self._loop.run_in_executor(
-            None, self._process_message, level, msg, kwargs
-        )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 이벤트 루프가 없는 환경에서는 동기 처리 (큐 기반이라 지연이 매우 작음)
+            self._process_message(level, msg, kwargs)
+            return
+        await loop.run_in_executor(None, self._process_message, level, msg, kwargs)
 
     def debug(self, msg: str, **kwargs) -> None:
         self._process_message(logging.DEBUG, msg, kwargs)

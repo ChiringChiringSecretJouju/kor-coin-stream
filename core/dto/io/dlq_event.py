@@ -1,13 +1,14 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+from core.dto.io._base import BaseIOModel
 
 from core.dto.io.error_event import WsEventErrorMeta
-from core.dto.io.event_target import ConnectionTarget
+from core.dto.io.target import ConnectionTarget
 from core.types import ErrorCode, ErrorDomain
 
 
-class DlqEvent(BaseModel):
+class DlqEvent(BaseIOModel):
     """DLQ 이벤트 DTO (I/O 경계용 Pydantic v2 모델).
 
     - action은 "dlq"로 고정합니다.
@@ -21,10 +22,8 @@ class DlqEvent(BaseModel):
     target: ConnectionTarget | None = None
     meta: WsEventErrorMeta
 
-    model_config = ConfigDict(use_enum_values=True, extra="forbid")
 
-
-class DlqEventRequest(BaseModel):
+class DlqEventRequest(BaseIOModel):
     """DLQ 이벤트 요청 DTO.
 
     - 프로듀서 메서드의 장황한 인자를 단일 DTO로 캡슐화합니다.
@@ -40,5 +39,3 @@ class DlqEventRequest(BaseModel):
     error_domain: ErrorDomain | None = None
     error_code: ErrorCode | None = None
     raw_context: dict[str, Any] | None = None
-
-    model_config = ConfigDict(use_enum_values=True, extra="forbid")

@@ -24,11 +24,6 @@ class ExchangeException(Exception):
     retryable: bool = False
     correlation_id: str | None = None
 
-    def __post_init__(self) -> None:
-        # frozen dataclass이므로 상위 Exception.__init__ 호출 대신 args를 직접 설정합니다.
-        # super().__init__를 호출하면 특정 환경에서 TypeError가 발생할 수 있습니다.
-        object.__setattr__(self, "args", (f"[{self.exchange_name}] {self.message}",))
-
     def to_dict(self) -> dict[str, Any]:
         """예외 정보를 이벤트 데이터로 변환"""
         result: dict[str, Any] = {
