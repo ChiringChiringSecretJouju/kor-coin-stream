@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from core.dto.internal.common import ConnectionScope
 from core.types import ConnectionStatus
@@ -20,7 +20,7 @@ class ConnectionMeta:
     last_active: int
     scope: ConnectionScope
 
-    def to_redis_mapping(self) -> dict[str, str | int | ConnectionScope]:
+    def to_redis_mapping(self) -> dict[str, str | int | dict[str, str]]:
         """Redis 해시로 쓰기 위한 매핑(dict)을 생성합니다.
 
         - Enum은 문자열 저장을 위해 `.value`로 변환합니다
@@ -30,7 +30,7 @@ class ConnectionMeta:
             "created_at": self.created_at,
             "last_active": self.last_active,
             "connection_id": self.connection_id,
-            "scope": self.scope,
+            "scope": asdict(self.scope),
         }
 
 
