@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Final, Literal, TypeAlias
+from enum import Enum
 
 DEFAULT_SCHEMA_VERSION: Final[str] = "1.0"
 
@@ -13,3 +14,20 @@ Region: TypeAlias = Literal["korea"]
 RequestType: TypeAlias = Literal["ticker", "orderbook", "trade"]
 ExchangeName: TypeAlias = Literal["upbit", "bithumb", "coinone", "korbit"]
 SocketParams: TypeAlias = dict[str, Any] | list[dict[str, Any]] | list[Any] | list[str]
+
+
+# redis
+class ConnectionStatus(Enum):
+    """연결 상태 Enum.
+
+    Redis에는 문자열 값(value)이 저장됩니다.
+    """
+
+    CONNECTED = "connected"
+    CONNECTING = "connecting"
+    DISCONNECTED = "disconnected"
+
+
+CONNECTION_STATUS_CONNECTED: Final[ConnectionStatus] = ConnectionStatus.CONNECTED
+CONNECTION_STATUS_CONNECTING: Final[ConnectionStatus] = ConnectionStatus.CONNECTING
+CONNECTION_STATUS_DISCONNECTED: Final[ConnectionStatus] = ConnectionStatus.DISCONNECTED

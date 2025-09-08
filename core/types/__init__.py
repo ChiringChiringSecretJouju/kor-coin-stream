@@ -1,17 +1,13 @@
-from core.types._cache_types import (
-    CONNECTION_STATUS_CONNECTED,
-    CONNECTION_STATUS_CONNECTING,
-    CONNECTION_STATUS_DISCONNECTED,
-    ConnectionData,
-    ConnectionMetaData,
-    ConnectionStatus,
-)
 from core.types._common_types import (
     DEFAULT_SCHEMA_VERSION,
     ExchangeName,
     Region,
     RequestType,
     SocketParams,
+    ConnectionStatus,
+    CONNECTION_STATUS_CONNECTED,
+    CONNECTION_STATUS_CONNECTING,
+    CONNECTION_STATUS_DISCONNECTED,
 )
 from core.types._exception_types import (
     ErrorCategory,
@@ -36,19 +32,16 @@ from core.types._payload_type import (
 )
 
 __all__ = [
-    # _cache_types
-    "ConnectionStatus",
-    "ConnectionMetaData",
-    "ConnectionData",
-    "CONNECTION_STATUS_CONNECTED",
-    "CONNECTION_STATUS_CONNECTING",
-    "CONNECTION_STATUS_DISCONNECTED",
     # _common_types
     "DEFAULT_SCHEMA_VERSION",
     "Region",
     "RequestType",
     "ExchangeName",
     "SocketParams",
+    "ConnectionStatus",
+    "CONNECTION_STATUS_CONNECTED",
+    "CONNECTION_STATUS_CONNECTING",
+    "CONNECTION_STATUS_DISCONNECTED",
     # _exception_types
     "ErrorDomain",
     "ErrorCode",

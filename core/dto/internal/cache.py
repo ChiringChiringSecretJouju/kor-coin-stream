@@ -3,14 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.dto.internal.common import ConnectionScope
-from core.types import ConnectionMetaData, ConnectionStatus
+from core.types import ConnectionStatus
 
 
 @dataclass(slots=True, frozen=True, repr=False, match_args=False, kw_only=True)
 class ConnectionMeta:
-    """연결 메타데이터 DTO.
+    """연결 메타데이터(내부 불변 DTO).
 
-    Redis 해시에 저장될 필드 집합을 단일 객체로 캡슐화합니다.
+    - 도메인 내부 표현을 담고, 외부 저장용 매핑은 `to_redis_mapping()`으로 제공합니다.
+    - status는 Enum으로 유지하고, Redis 저장 시 문자열 값으로 변환합니다.
     """
 
     status: ConnectionStatus
@@ -19,8 +20,11 @@ class ConnectionMeta:
     last_active: int
     scope: ConnectionScope
 
-    def to_redis_mapping(self) -> ConnectionMetaData:
-        # Redis에는 문자열 값만 저장하도록 Enum은 `.value`로 변환한다.
+    def to_redis_mapping(self) -> dict[str, str | int | ConnectionScope]:
+        """Redis 해시로 쓰기 위한 매핑(dict)을 생성합니다.
+
+        - Enum은 문자열 저장을 위해 `.value`로 변환합니다
+        """
         return {
             "status": self.status.value,
             "created_at": self.created_at,
@@ -32,7 +36,7 @@ class ConnectionMeta:
 
 @dataclass(slots=True, frozen=True, repr=False, match_args=False, kw_only=True)
 class ConnectionKeyBuilder:
-    """연결 스코프에 대한 Redis 키를 생성합니다."""
+    """연결 스코프별 Redis 키 빌더."""
 
     scope: ConnectionScope
 
