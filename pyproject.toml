@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kor-coin-stream"
+version = "0.1.0"
+description = "Korean coin stream project with ZAOC architecture"
+requires-python = "==3.12.10"
+readme = "README.md"
+dependencies = [
+    "aiohttp>=3.12.15",
+    "aiokafka>=0.12.0",
+    "cachetools>=6.2.0",
+    "cctx>=1.0.0",
+    "confluent-kafka>=2.11.1",
+    "kafka-python>=2.2.15",
+    "kafka-python-ng>=2.2.3",
+    "mmh3>=5.2.0",
+    "numpy>=2.3.2",
+    "pandas>=2.3.2",
+    "pydantic>=2.11.7",
+    "pytest>=8.4.2",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.5",
+    "ruff>=0.12.12",
+    "setuptools>=80.9.0",
+    "websocket>=0.2.1",
+    "websocket-client>=1.8.0",
+    "websockets>=15.0.1",
+    "pyrefly",
+    "redis>=6.4.0",
+    "pydantic-settings>=2.10.1",
+]
+
+[tool.setuptools]
+# Flat layout: use current directory as package root
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "core*",
+  "common*",
+]
+exclude = [
+  "promiting*",
+  "tests*",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = []
+
+[tool.pyrefly]
+# 어떤 소스를 검사할지 지정
+project-includes = ["core", "common"]
+project-excludes = ["**/.[!/.]*", "**/tests", "promiting/**"]
+search-path = ["."]
+
+# 파이썬 환경 설정
+python-platform = "darwin"
+python-version = "3.12.10"
+# uv 가상환경을 사용하므로 인터프리터 지정은 생략 가능. 필요 시 아래 주석 해제
+# python-interpreter = ".venv/bin/python"
+
+# 타입 체크 옵션(샘플)
+# 일부 옵션은 시퀀스(목록) 타입을 기대합니다.
+ignore-errors-in-generated-code = true
+
+[tool.pyrefly.errors]
+# 프로젝트 상황에 맞게 조정 가능 (샘플: 과도한 경고 억제)
+bad-assignment = false
+invalid-argument = false
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = [
+  "tests",
+]
+pythonpath = [
+  ".",
+]
+# Uncomment if using asyncio tests
+# asyncio_mode = "auto"
