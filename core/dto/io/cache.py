@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, field_validator
+from pydantic import field_validator
+from core.dto.io._base import BaseIOModelDTO
 
 from core.types import ConnectionStatus, ExchangeName, Region, RequestType
 
 
-class ConnectionMetaHash(BaseModel):
+class ConnectionMetaHashDTO(BaseIOModelDTO):
     """Redis 메타 해시 스키마 검증용 I/O 모델.
 
     - Redis 해시에서 읽은 원시 값을 파싱/검증한다.

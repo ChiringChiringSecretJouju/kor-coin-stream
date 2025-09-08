@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import ConfigDict
-from core.dto.io._base import BaseIOModel
-
+from core.dto.io._base import BaseIOModelDTO
 from core.types import SocketParams
 
 """명령(Command) 관련 I/O DTO 집합.
@@ -15,7 +14,7 @@ from core.types import SocketParams
 """
 
 
-class ConnectRequestEvent(BaseIOModel):
+class ConnectRequestEventDTO(BaseIOModelDTO):
     """연결 요청 이벤트 스키마(IO 모델)."""
 
     socket_mode: str
@@ -25,21 +24,21 @@ class ConnectRequestEvent(BaseIOModel):
     correlation_id: str | None = None
 
 
-class Connection(BaseIOModel):
+class ConnectionDTO(BaseIOModelDTO):
     """연결 스키마(IO 모델)."""
 
     url: str
     socket_params: SocketParams
 
 
-class CommandPayload(BaseIOModel):
+class CommandPayloadDTO(BaseIOModelDTO):
     """명령 스키마(IO 모델)."""
 
     type: str
     action: str
     target: dict[str, Any]
     symbols: list[str]
-    connection: Connection
+    connection: ConnectionDTO
     projection: list[str] | None = None
     schema_version: str | None = None
 
