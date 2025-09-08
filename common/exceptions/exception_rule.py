@@ -5,17 +5,9 @@ import asyncio
 from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 from redis.exceptions import (
     AuthenticationError as RedisAuthenticationError,
-)
-from redis.exceptions import (
     ConnectionError as RedisConnectionError,
-)
-from redis.exceptions import (
     DataError as RedisDataError,
-)
-from redis.exceptions import (
     ResponseError as RedisResponseError,
-)
-from redis.exceptions import (
     TimeoutError as RedisTimeoutError,
 )
 from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
