@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict
 
 from core.types import ErrorCode, ErrorDomain
 
-from .target import TargetModel
+from core.dto.io.event_target import ConnectionTarget
 
 
 class WsEventErrorMeta(BaseModel):
@@ -33,7 +33,7 @@ class WsErrorEvent(BaseModel):
 
     action: Literal["error"]
     message: str
-    target: TargetModel
+    target: ConnectionTarget
     meta: WsEventErrorMeta
 
     model_config = ConfigDict(use_enum_values=True, extra="forbid")
@@ -49,7 +49,7 @@ class ErrorEventRequest(BaseModel):
     error_domain: ErrorDomain
     error_code: ErrorCode
     message: str
-    target: TargetModel
+    target: ConnectionTarget
     correlation_id: str | None = None
     observed_key: str | None = None
     raw_context: dict[str, Any] | None = None

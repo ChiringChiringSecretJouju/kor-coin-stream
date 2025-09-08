@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 from redis.exceptions import (
     AuthenticationError as RedisAuthenticationError,
     ConnectionError as RedisConnectionError,
@@ -11,19 +10,21 @@ from redis.exceptions import (
     TimeoutError as RedisTimeoutError,
 )
 from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
+from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 
 from core.dto.internal.common import Rule
 from core.types import ErrorCode, ErrorDomain, RuleDict
 
+
 # Kafka
-KafkaException: tuple[type[BaseException], ...] = (
+KafkaException = (
     NoBrokersAvailable,
     KafkaConnectionError,
     KafkaProtocolError,
 )
 
 # Redis
-RedisException: tuple[type[BaseException], ...] = (
+RedisException = (
     RedisConnectionError,
     RedisDataError,
     RedisResponseError,
@@ -149,7 +150,7 @@ RULES_FOR_INFRA: list[Rule] = [
 ]
 
 # 예상되는 예외
-EXPECTED_EXCEPTIONS: tuple[type[BaseException], ...] = (
+EXPECTED_EXCEPTIONS = (
     *SOCKET_EXCEPTIONS,
     *DESERIALIZATION_ERRORS,
     *KafkaException,

@@ -20,6 +20,9 @@ from core.types._exception_types import (
     ExceptionGroup,
     RuleDict,
     RuleKind,
+    SyncOrAsyncCallable,
+    AsyncWrappedCallable,
+    ErrorWrappedDecorator,
 )
 from core.types._payload_type import (
     AsyncTradeType,
@@ -62,4 +65,7 @@ __all__ = [
     "AsyncTradeType",
     "MessageHandler",
     "CountingItem",
+    "SyncOrAsyncCallable",
+    "AsyncWrappedCallable",
+    "ErrorWrappedDecorator",
 ]

@@ -3,21 +3,24 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
-from typing import Any, Awaitable, Callable, ParamSpec, TypeAlias, TypeVar, cast
+from typing import Any, cast
 
 from common.exceptions.base import ExchangeException
 from common.exceptions.exception_rule import EXPECTED_EXCEPTIONS, get_rules_for
-from core.types import ErrorCode, ErrorDomain
+from core.types import (
+    ErrorCode,
+    ErrorDomain,
+    ErrorCategory,
+    SyncOrAsyncCallable,
+    AsyncWrappedCallable,
+    ErrorWrappedDecorator,
+)
+
+from typing import ParamSpec, TypeVar
 
 # 타입 파라미터 정의
 P = ParamSpec("P")
 R = TypeVar("R")
-ErrorCategory = tuple[ErrorDomain, ErrorCode, bool]
-
-# 데코레이터 타입 별칭
-SyncOrAsyncCallable: TypeAlias = Callable[P, R] | Callable[P, Awaitable[R]]
-AsyncWrappedCallable: TypeAlias = Callable[P, Awaitable[R]]
-ErrorWrappedDecorator: TypeAlias = Callable[[SyncOrAsyncCallable], AsyncWrappedCallable]
 
 
 def _classify_exception(err: BaseException, kind: str) -> ErrorCategory:

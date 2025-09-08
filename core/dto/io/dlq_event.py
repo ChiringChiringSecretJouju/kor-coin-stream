@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from core.dto.io.error_event import WsEventErrorMeta
-from core.dto.io.target import TargetModel
+from core.dto.io.event_target import ConnectionTarget
 from core.types import ErrorCode, ErrorDomain
 
 
@@ -18,7 +18,7 @@ class DlqEvent(BaseModel):
     reason: str
     original_message: Any
     raw_bytes_b64: str | None = None
-    target: TargetModel | None = None
+    target: ConnectionTarget | None = None
     meta: WsEventErrorMeta
 
     model_config = ConfigDict(use_enum_values=True, extra="forbid")
@@ -35,7 +35,7 @@ class DlqEventRequest(BaseModel):
     original_message: Any
     correlation_id: str | None = None
     raw_bytes_b64: str | None = None
-    target: TargetModel | None = None
+    target: ConnectionTarget | None = None
     observed_key: str | None = None
     error_domain: ErrorDomain | None = None
     error_code: ErrorCode | None = None
