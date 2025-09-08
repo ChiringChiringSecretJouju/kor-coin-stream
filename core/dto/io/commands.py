@@ -6,15 +6,8 @@ from pydantic import ConfigDict
 from core.dto.io._base import BaseIOModelDTO
 from core.types import SocketParams
 
-"""명령(Command) 관련 I/O DTO 집합.
 
-- 팀 규칙: I/O 경계는 Pydantic v2 모델 사용
-- 내부 도메인은 dataclass 사용
-- 이 파일은 core/types/_commands_types.py의 3개 TypedDict를 Pydantic 모델로 이관한 구현입니다.
-"""
-
-
-class ConnectRequestEventDTO(BaseIOModelDTO):
+class ConnectRequestDTO(BaseIOModelDTO):
     """연결 요청 이벤트 스키마(IO 모델)."""
 
     socket_mode: str
@@ -24,21 +17,21 @@ class ConnectRequestEventDTO(BaseIOModelDTO):
     correlation_id: str | None = None
 
 
-class ConnectionDTO(BaseIOModelDTO):
+class ConnectionConfigDTO(BaseIOModelDTO):
     """연결 스키마(IO 모델)."""
 
     url: str
     socket_params: SocketParams
 
 
-class CommandPayloadDTO(BaseIOModelDTO):
+class CommandDTO(BaseIOModelDTO):
     """명령 스키마(IO 모델)."""
 
     type: str
     action: str
     target: dict[str, Any]
     symbols: list[str]
-    connection: ConnectionDTO
+    connection: ConnectionConfigDTO
     projection: list[str] | None = None
     schema_version: str | None = None
 

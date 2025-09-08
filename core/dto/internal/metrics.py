@@ -6,7 +6,7 @@ from typing import Any
 
 
 @dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
-class MinuteItem:
+class MinuteItemDomain:
     """단일 분 집계 항목 DTO.
 
     - 카운팅/메트릭 전송 경계에서 사용되는 불변 데이터 객체입니다.
@@ -19,7 +19,7 @@ class MinuteItem:
 
 
 @dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
-class MinuteState:
+class MinuteStateDomain:
     """내부 상태 캡슐화 (슬롯으로 오버헤드 축소)."""
 
     kst: timezone

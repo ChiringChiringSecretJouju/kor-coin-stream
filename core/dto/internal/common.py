@@ -14,8 +14,8 @@ from core.types import (
 
 
 @dataclass(slots=True, frozen=True, eq=True, repr=False, match_args=False, kw_only=True)
-class ConnectionScope:
-    """연결 스코프 공통 파라미터.
+class ConnectionScopeDomain:
+    """연결 스코프(내부 도메인 값 객체).
 
     - (exchange, region, request_type) 조합을 공통 타입으로 정의
     - Redis 키 생성, 캐시 스펙 등에서 재사용
@@ -27,8 +27,8 @@ class ConnectionScope:
 
 
 @dataclass(slots=True, repr=False, eq=False, match_args=False, kw_only=True)
-class ConnectionPolicy:
-    """웹소켓 연결/백오프/하트비트/워치독 정책"""
+class ConnectionPolicyDomain:
+    """웹소켓 연결/백오프/하트비트/워치독 정책(도메인)."""
 
     # 백오프
     initial_backoff: float = 1.0
@@ -49,8 +49,8 @@ class ConnectionPolicy:
 @dataclass(
     slots=True, frozen=True, eq=False, repr=False, match_args=False, kw_only=True
 )
-class Rule:
-    """예외 분류 규칙
+class RuleDomain:
+    """예외 분류 규칙(도메인)
 
     kinds: 규칙이 적용될 경계 종류 ("kafka", "redis", "ws", "infra")
     exc:   매칭할 예외 타입(단일 타입 또는 타입 튜플)
@@ -63,8 +63,8 @@ class Rule:
 
 
 @dataclass(slots=True, frozen=True, eq=True, repr=False, match_args=False, kw_only=True)
-class ConnectRequestEventDC:
-    """연결 요청 이벤트 내부 DTO(불변 값 객체).
+class ConnectRequestDomain:
+    """연결 요청(도메인 값 객체).
 
     - socket_mode: "ticker" | "orderbook" | "trade" 중 하나
     - symbols: 단일 심볼 문자열 또는 복수 심볼 리스트

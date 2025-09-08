@@ -12,7 +12,7 @@ from redis.exceptions import (
 from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
 from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 
-from core.dto.internal.common import Rule
+from core.dto.internal.common import RuleDomain
 from core.types import ErrorCode, ErrorDomain, RuleDict
 
 
@@ -51,13 +51,13 @@ SOCKET_EXCEPTIONS = (
 
 
 # 1) asyncio 규칙 (ws/infra)
-RULES_ASYNCIO: list[Rule] = [
-    Rule(
+RULES_ASYNCIO: list[RuleDomain] = [
+    RuleDomain(
         kinds=("ws", "infra"),
         exc=asyncio.CancelledError,
         result=(ErrorDomain.ORCHESTRATOR, ErrorCode.ORCHESTRATOR_ERROR, False),
     ),
-    Rule(
+    RuleDomain(
         kinds=("ws", "infra"),
         exc=asyncio.TimeoutError,
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
@@ -65,8 +65,8 @@ RULES_ASYNCIO: list[Rule] = [
 ]
 
 # 2) Type/역직렬화 및 기타 공통 규칙 (모든 경계 공통)
-RULES_TYPE: list[Rule] = [
-    Rule(
+RULES_TYPE: list[RuleDomain] = [
+    RuleDomain(
         kinds=("infra", "kafka", "redis", "ws"),
         exc=DESERIALIZATION_ERRORS,
         result=(ErrorDomain.DESERIALIZATION, ErrorCode.DESERIALIZATION_ERROR, False),
@@ -74,8 +74,8 @@ RULES_TYPE: list[Rule] = [
 ]
 
 # 4) 기타(소켓/웹소켓 등) 규칙 (ws/infra)
-RULES_OTHERS: list[Rule] = [
-    Rule(
+RULES_OTHERS: list[RuleDomain] = [
+    RuleDomain(
         kinds=("ws", "infra"),
         exc=SOCKET_EXCEPTIONS,
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
@@ -83,18 +83,18 @@ RULES_OTHERS: list[Rule] = [
 ]
 
 # 3) Kafka 규칙 (구체 -> 포괄)
-RULES_KAFKA: list[Rule] = [
-    Rule(
+RULES_KAFKA: list[RuleDomain] = [
+    RuleDomain(
         kinds=("kafka", "infra"),
         exc=KafkaProtocolError,
         result=(ErrorDomain.PROTOCOL, ErrorCode.INVALID_SCHEMA, False),
     ),
-    Rule(
+    RuleDomain(
         kinds=("kafka", "infra"),
         exc=KafkaConnectionError,
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
     ),
-    Rule(
+    RuleDomain(
         kinds=("kafka", "infra"),
         exc=KafkaException,
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
@@ -102,23 +102,23 @@ RULES_KAFKA: list[Rule] = [
 ]
 
 # 1) Redis 규칙 (구체 -> 포괄)
-RULES_REDIS: list[Rule] = [
-    Rule(
+RULES_REDIS: list[RuleDomain] = [
+    RuleDomain(
         kinds=("redis", "infra"),
         exc=RedisAuthenticationError,
         result=(ErrorDomain.CACHE, ErrorCode.CONNECT_FAILED, False),
     ),
-    Rule(
+    RuleDomain(
         kinds=("redis", "infra"),
         exc=RedisConnectionError,
         result=(ErrorDomain.CACHE, ErrorCode.CONNECT_FAILED, True),
     ),
-    Rule(
+    RuleDomain(
         kinds=("redis", "infra"),
         exc=RedisDataError,
         result=(ErrorDomain.PAYLOAD, ErrorCode.INVALID_SCHEMA, False),
     ),
-    Rule(
+    RuleDomain(
         kinds=("redis", "infra"),
         exc=RedisException,
         result=(ErrorDomain.CACHE, ErrorCode.CONNECT_FAILED, True),
@@ -127,23 +127,23 @@ RULES_REDIS: list[Rule] = [
 
 # 5) 전체 규칙 (구체 -> 포괄 순서를 유지하며 결합)
 # 주의: 매칭 우선순위를 보장하기 위해 선언 순서를 유지합니다.
-RULES_FOR_WS: list[Rule] = [
+RULES_FOR_WS: list[RuleDomain] = [
     *RULES_ASYNCIO,
     *RULES_TYPE,
     *RULES_OTHERS,
 ]
 
-RULES_FOR_KAFKA: list[Rule] = [
+RULES_FOR_KAFKA: list[RuleDomain] = [
     *RULES_FOR_WS,
     *RULES_KAFKA,
 ]
 
-RULES_FOR_REDIS: list[Rule] = [
+RULES_FOR_REDIS: list[RuleDomain] = [
     *RULES_FOR_WS,
     *RULES_REDIS,
 ]
 
-RULES_FOR_INFRA: list[Rule] = [
+RULES_FOR_INFRA: list[RuleDomain] = [
     *RULES_FOR_WS,
     *RULES_KAFKA,
     *RULES_REDIS,
@@ -165,6 +165,6 @@ RULES_BY_KIND: RuleDict = {
 }
 
 
-def get_rules_for(kind: str) -> list[Rule]:
+def get_rules_for(kind: str) -> list[RuleDomain]:
     """kind에 해당하는 규칙 리스트 반환. 알 수 없는 kind는 RULES_ALL로 폴백."""
     return RULES_BY_KIND.get(kind, RULES_FOR_INFRA)

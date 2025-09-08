@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Coroutine, TypeAlias
 
 from common.logger import PipelineLogger
-from core.dto.internal.metrics import MinuteItem, MinuteState
+from core.dto.internal.metrics import MinuteItemDomain, MinuteStateDomain
 
 # NOTE: emit_factory 반환 타입에 Any를 사용하는 이유
 # - 호출자는 결과 값을 사용하지 않고 fire-and-forget 패턴으로
@@ -14,7 +14,7 @@ from core.dto.internal.metrics import MinuteItem, MinuteState
 # - 반환 타입을 구체화할 근거가 없어, 인터페이스 유연성을 위해
 #   Any 허용.
 EmitFactory: TypeAlias = Callable[
-    [list[MinuteItem], int, int], Coroutine[Any, Any, Any]
+    [list[MinuteItemDomain], int, int], Coroutine[Any, Any, Any]
 ]
 
 
@@ -31,10 +31,10 @@ class MinuteBatchCounter:
       `MinuteItem` 리스트로 복원하여 타입 일관성을 유지합니다.
       직렬화는 프로듀서에서 수행합니다.
     - emit_factory 시그니처:
-      (items: list[MinuteItem], range_start_ts_kst: int,
-      range_end_ts_kst: int) -> Coroutine
+      (items, range_start_ts_kst, range_end_ts_kst)
+      -> Coroutine 생성자
+    logger: 로깅 인스턴스
     """
-
     def __init__(self, emit_factory: EmitFactory, logger: PipelineLogger) -> None:
         """
         Args:
@@ -45,7 +45,7 @@ class MinuteBatchCounter:
         """
         self._emit_factory = emit_factory
         self.logger = logger
-        self._state = MinuteState(
+        self._state = MinuteStateDomain(
             kst=timezone(timedelta(hours=9)),
             current_minute_key=int(time.time() // 60),
             total=0,
@@ -77,7 +77,7 @@ class MinuteBatchCounter:
             self._state.current_minute_key * 60, tz=self._state.kst
         )
         minute_start_ts_kst = int(minute_dt_kst.timestamp())
-        item = MinuteItem(
+        item = MinuteItemDomain(
             minute_start_ts_kst=minute_start_ts_kst,
             total=self._state.total,
             details=self._state.symbols.copy(),
@@ -101,8 +101,8 @@ class MinuteBatchCounter:
         items_dicts = self._state.buffer[:5]
         self._state.buffer = self._state.buffer[5:]
         # dict를 MinuteItem으로 복원하여 타입 일관성 유지
-        items: list[MinuteItem] = [
-            MinuteItem(
+        items: list[MinuteItemDomain] = [
+            MinuteItemDomain(
                 minute_start_ts_kst=d["minute_start_ts_kst"],
                 total=d["total"],
                 details=d["details"],

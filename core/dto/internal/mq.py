@@ -3,7 +3,7 @@ from typing import Any, Callable
 
 
 @dataclass(slots=True, frozen=True, kw_only=True, repr=False, match_args=False)
-class ProducerConfig:
+class ProducerConfigDomain:
     """Kafka Producer 설정 (내부용 dataclass).
 
     - slots+frozen으로 메모리/안전 최적화.
@@ -20,7 +20,7 @@ class ProducerConfig:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True, repr=False, match_args=False)
-class ConsumerConfig:
+class ConsumerConfigDomain:
     """Kafka Consumer 설정 (내부용 dataclass)."""
 
     bootstrap_servers: str
@@ -32,3 +32,7 @@ class ConsumerConfig:
     # Any 사용 사유: 카프카 메시지 스키마가 토픽별로 상이하며 런타임 검증(Pydantic)으로 구체화
     value_deserializer: Callable[[bytes], Any]
     key_deserializer: Callable[[bytes | None], Any | None]
+
+# Backward-compat aliases
+ProducerConfig = ProducerConfigDomain
+ConsumerConfig = ConsumerConfigDomain

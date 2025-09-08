@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 
-from core.dto.internal.common import ConnectionScope
+from core.dto.internal.common import ConnectionScopeDomain
 from core.types import ConnectionStatus
 
 
 @dataclass(slots=True, frozen=True, repr=False, match_args=False, kw_only=True)
-class ConnectionMeta:
+class ConnectionMetaDomain:
     """연결 메타데이터(내부 불변 DTO).
 
     - 도메인 내부 표현을 담고, 외부 저장용 매핑은 `to_redis_mapping()`으로 제공합니다.
@@ -18,7 +18,7 @@ class ConnectionMeta:
     connection_id: str
     created_at: int
     last_active: int
-    scope: ConnectionScope
+    scope: ConnectionScopeDomain
 
     def to_redis_mapping(self) -> dict[str, str | int | dict[str, str]]:
         """Redis 해시로 쓰기 위한 매핑(dict)을 생성합니다.
@@ -35,10 +35,10 @@ class ConnectionMeta:
 
 
 @dataclass(slots=True, frozen=True, repr=False, match_args=False, kw_only=True)
-class ConnectionKeyBuilder:
+class ConnectionKeyBuilderDomain:
     """연결 스코프별 Redis 키 빌더."""
 
-    scope: ConnectionScope
+    scope: ConnectionScopeDomain
 
     def meta(self) -> str:
         return f"ws:connection:{self.scope.exchange}:{self.scope.region}:{self.scope.request_type}"
@@ -51,11 +51,11 @@ class ConnectionKeyBuilder:
 
 
 @dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
-class WebsocketConnectionSpec:
+class WebsocketConnectionSpecDomain:
     """WebsocketConnectionCache 생성 시 필요한 파라미터 묶음.
 
     - 다중 인자 전달을 DTO로 캡슐화하여 시그니처 단순화 및 유지보수성 향상
     """
 
-    scope: ConnectionScope
+    scope: ConnectionScopeDomain
     symbols: tuple[str, ...]
