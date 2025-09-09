@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/facebook/pyrefly-pre-commit
+    rev: 0.0.1
+    hooks:
+      - id: pyrefly-typecheck-specific-version
+        name: Pyrefly (type checking)
+        pass_filenames: false
+        additional_dependencies: [
+            "pyrefly",
+            "pydantic>=2.11.7",
+            "pydantic-settings>=2.10.1",
+            "redis>=6.4.0",
+            "kafka-python>=2.2.15",
+            "websockets>=15.0.1",
+        ]
+        args: ["--ignore-missing-source=true"]
