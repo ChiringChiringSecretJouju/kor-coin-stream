@@ -57,6 +57,7 @@ class MinuteBatchCounter:
             total=0,
             symbols={},
             buffer=[],
+            batch_size=batch_size,
         )
         # 배치 크기(분 단위). 최소 1분 보장
         self._batch_size: int = max(1, int(batch_size))

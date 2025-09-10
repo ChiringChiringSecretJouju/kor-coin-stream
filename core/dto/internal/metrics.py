@@ -32,3 +32,4 @@ class MinuteStateDomain:
     # - dict 값 타입에 Any를 사용하는 이유: 세부 필드 확장(추가 메타) 가능성과
     #   직렬화 층(프로듀서)에서의 유연성을 허용하기 위함입니다.
     buffer: list[dict[str, Any]]
+    batch_size: int = 5

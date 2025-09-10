@@ -78,20 +78,8 @@ class WebsocketSettings(BaseSettings):
     model_config = env_settings("WS_")
 
 
-class MetricsSettings(BaseSettings):
-    """Metrics/Counting 관련 설정
-
-    환경 변수(prefix: METRICS_)로 오버라이드 가능합니다.
-    """
-
-    COUNTING_BATCH_SIZE: int = 1  # 분 배치 크기(기본 1)
-
-    model_config = env_settings("METRICS_")
-
-
 # 설정 인스턴스 생성
 kafka_settings = KafkaSettings()
 redis_settings = RedisSettings()
 logging_settings = LoggingSettings()
 websocket_settings = WebsocketSettings()
-metrics_settings = MetricsSettings()
