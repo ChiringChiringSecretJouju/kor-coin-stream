@@ -57,6 +57,7 @@ class MinuteBatchCounter:
             total=0,
             symbols={},
             buffer=[],
+            batch_size=batch_size,
         )
         # 배치 크기(분 단위). 최소 1분 보장
         self._batch_size: int = max(1, int(batch_size))
@@ -104,6 +105,7 @@ class MinuteBatchCounter:
 
     def _schedule_emit_if_ready(self) -> None:
         """버퍼가 1개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
+        """버퍼가 배치 크기 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
         if len(self._state.buffer) < self._batch_size:
             return
         items_dicts = self._state.buffer[: self._batch_size]

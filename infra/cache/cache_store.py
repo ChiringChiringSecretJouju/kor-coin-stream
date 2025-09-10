@@ -40,6 +40,7 @@ from core.types import (
     connection_status_format,
 )
 from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
+import asyncio
 from infra.messaging.connect.producer_client import ErrorEventProducer
 
 logger = PipelineLogger.get_logger("redis", "cache_store")
@@ -308,6 +309,15 @@ class WebsocketConnectionCache:
 
     async def _emit_error(self, err: BaseException) -> None:
         """Redis 계층 에러를 ws.error로 발행."""
+        # 종료 중이거나 러닝 루프가 없으면 에러 발행을 건너뜁니다.
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_closed():
+                logger.warning("skip emit_error: event loop is closed")
+                return
+        except RuntimeError:
+            logger.warning("skip emit_error: no running event loop")
+            return
         target = ConnectionTargetDTO(
             exchange=self.exchange,
             region=self.region,
