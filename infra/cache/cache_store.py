@@ -23,6 +23,7 @@ from redis.asyncio import Redis
 from common.logger import PipelineLogger
 from config.settings import redis_settings
 from infra.cache.cache_client import RedisConnectionManager
+from core.dto.internal.common import ConnectionScopeDomain
 from core.dto.io.cache import ConnectionMetaHashDTO
 from core.dto.internal.cache import (
     ConnectionKeyBuilderDomain,
@@ -30,6 +31,7 @@ from core.dto.internal.cache import (
     WebsocketConnectionSpecDomain,
 )
 from core.dto.io.target import ConnectionTargetDTO
+
 from core.types import (
     ConnectionStatus,
     CONNECTION_STATUS_CONNECTED,
@@ -128,7 +130,6 @@ class _SymbolsRepository:
         )
         await self.redis.eval(lua, 1, self.keys.symbols(), ttl, *symbols)
 
-    @redis_exception_wrapped()
     async def delete(self) -> int:
         """Set 키를 삭제한다."""
         return await self.redis.delete(self.keys.symbols())
@@ -160,9 +161,9 @@ class WebsocketConnectionCache:
         self.request_type = spec.scope.request_type
 
         keys = ConnectionKeyBuilderDomain(
-            ConnectionScopeDomain(
-                exchange=self.exchange,
+            scope=ConnectionScopeDomain(
                 region=self.region,
+                exchange=self.exchange,
                 request_type=self.request_type,
             )
         )

@@ -25,6 +25,10 @@ class ConnectionScopeDomain:
     exchange: ExchangeName
     request_type: RequestType
 
+    def to_key(self) -> str:
+        """스코프를 Kafka 키로 변환 (region|exchange|request_type 형식)"""
+        return f"{self.region}|{self.exchange}|{self.request_type}"
+
 
 @dataclass(slots=True, repr=False, eq=False, match_args=False, kw_only=True)
 class ConnectionPolicyDomain:
@@ -60,21 +64,3 @@ class RuleDomain:
     kinds: RuleKind
     exc: ExceptionGroup
     result: ErrorCategory
-
-
-@dataclass(slots=True, frozen=True, eq=True, repr=False, match_args=False, kw_only=True)
-class ConnectRequestDomain:
-    """연결 요청(도메인 값 객체).
-
-    - socket_mode: "ticker" | "orderbook" | "trade" 중 하나
-    - symbols: 단일 심볼 문자열 또는 복수 심볼 리스트
-    - orderbook_depth: 오더북일 때만 사용(선택)
-    - realtime_only: 거래소가 지원하면 실시간만 사용
-    - correlation_id: 요청 추적용(선택)
-    """
-
-    socket_mode: RequestType
-    symbols: str | list[str]
-    orderbook_depth: int | None = None
-    realtime_only: bool = False
-    correlation_id: str | None = None

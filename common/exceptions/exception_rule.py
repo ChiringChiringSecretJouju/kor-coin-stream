@@ -49,6 +49,7 @@ SOCKET_EXCEPTIONS = (
     WebSocketException,
     ConnectionClosed,
     OSError,
+    KeyError,
 )
 
 
@@ -78,7 +79,7 @@ RULES_TYPE: list[RuleDomain] = [
 # 4) 기타(소켓/웹소켓 등) 규칙 (ws/infra)
 RULES_OTHERS: list[RuleDomain] = [
     RuleDomain(
-        kinds=("ws", "infra"),
+        kinds=("ws", "infra", "orchestrator"),
         exc=SOCKET_EXCEPTIONS,
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
     ),
@@ -153,6 +154,7 @@ RULES_FOR_INFRA: list[RuleDomain] = [
 
 # 예상되는 예외
 EXPECTED_EXCEPTIONS = (
+    *RULES_OTHERS,
     *SOCKET_EXCEPTIONS,
     *DESERIALIZATION_ERRORS,
     *KafkaException,
@@ -178,7 +180,7 @@ def classify_exception(err: BaseException, kind: str) -> ErrorCategory:
     # 일급 함수로 합병(사유 -> 예외 테이블에서 바로 매칭)
     def get_rules_for(kind: str) -> list[RuleDomain]:
         """kind에 해당하는 규칙 리스트 반환. 알 수 없는 kind는 RULES_ALL로 폴백."""
-        return RULES_BY_KIND.get(kind, RULES_FOR_INFRA)
+        return RULES_BY_KIND.get(kind, [])
 
     rules: list[RuleDomain] = get_rules_for(kind)
     for rule in rules:

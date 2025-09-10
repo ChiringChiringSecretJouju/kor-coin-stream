@@ -1,4 +1,6 @@
-from typing import Any, Literal
+from typing import Literal
+from datetime import datetime, timezone
+from pydantic import Field
 
 from core.dto.io._base import BaseIOModelDTO
 from core.dto.io.error_event import WsEventErrorMetaDTO
@@ -14,6 +16,10 @@ class DlqEventDTO(BaseIOModelDTO):
 
     action: Literal["dlq"]
     reason: str
-    original_message: Any
+    # UTC 기준 시각을 추가 제공합니다(후방 호환). 기본값은 현재 UTC.
+    error_timestamp_utc: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     target: ConnectionTargetDTO | None = None
     meta: WsEventErrorMetaDTO
+    detail_error: dict[str, str]

@@ -19,10 +19,10 @@ EmitFactory: TypeAlias = Callable[
 
 
 class MinuteBatchCounter:
-    """수신 메시지 카운트를 1분 단위로 합산하고, 5개(5분) 모아 비동기 배치를 발행합니다.
+    """수신 메시지 카운트를 1분 단위로 합산하고, 1개(1분) 모아 비동기 배치를 발행합니다.
 
     - inc()는 초경량이며, 분 경계가 바뀌었을 때만 내부 상태를 롤오버합니다.
-    - 배치 길이가 5가 되면 `emit_factory`에서 생성된 코루틴을
+    - 배치 길이가 1개가 되면 `emit_factory`에서 생성된 코루틴을
       asyncio.create_task로 발행합니다.
     - emit은 비동기로 처리되어 수신 루프를 블로킹하지 않습니다.
 
@@ -35,6 +35,7 @@ class MinuteBatchCounter:
       -> Coroutine 생성자
     logger: 로깅 인스턴스
     """
+
     def __init__(self, emit_factory: EmitFactory, logger: PipelineLogger) -> None:
         """
         Args:
@@ -95,11 +96,11 @@ class MinuteBatchCounter:
         self._state.symbols.clear()
 
     def _schedule_emit_if_ready(self) -> None:
-        """버퍼가 5개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
-        if len(self._state.buffer) < 5:
+        """버퍼가 1개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
+        if len(self._state.buffer) < 1:
             return
-        items_dicts = self._state.buffer[:5]
-        self._state.buffer = self._state.buffer[5:]
+        items_dicts = self._state.buffer[:1]
+        self._state.buffer = self._state.buffer[1:]
         # dict를 MinuteItem으로 복원하여 타입 일관성 유지
         items: list[MinuteItemDomain] = [
             MinuteItemDomain(
@@ -122,3 +123,31 @@ class MinuteBatchCounter:
                 )
 
         task.add_done_callback(_done_cb)
+
+    async def flush_now(self) -> None:
+        """잔여 버퍼를 즉시 동기 전송합니다.
+
+        - 현재 분 누계가 남아 있으면 롤오버하여 버퍼에 적재한 뒤 전송합니다.
+        - 종료/정리 시점에서 호출하여 메트릭 손실을 줄입니다.
+        """
+        # 현재 분에 누계가 있으면 버퍼로 롤오버
+        if self._state.total > 0 or self._state.symbols:
+            self._rollover_minute()
+
+        if not self._state.buffer:
+            return
+
+        # 버퍼 전체를 한 번에 전송
+        items: list[MinuteItemDomain] = [
+            MinuteItemDomain(
+                minute_start_ts_kst=d["minute_start_ts_kst"],
+                total=d["total"],
+                details=d["details"],
+            )
+            for d in self._state.buffer
+        ]
+        range_start_ts_kst = items[0].minute_start_ts_kst
+        range_end_ts_kst = items[-1].minute_start_ts_kst + 59
+
+        await self._emit_factory(items, range_start_ts_kst, range_end_ts_kst)
+        self._state.buffer.clear()

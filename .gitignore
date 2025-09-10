@@ -207,3 +207,4 @@ marimo/_lsp/
 __marimo__/
 kor_coin_stream.egg-info/
 promting/
+logs/

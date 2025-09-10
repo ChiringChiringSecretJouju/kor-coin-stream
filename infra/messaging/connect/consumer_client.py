@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import random
 import asyncio
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from aiokafka import AIOKafkaConsumer
 
@@ -12,7 +11,7 @@ from core.dto.adapter.stream_context import adapter_stream_context
 from core.dto.internal.orchestrator import StreamContextDomain
 from core.dto.io.commands import CommandDTO
 from core.dto.io.target import ConnectionTargetDTO
-from core.types import PayloadAction, PayloadType
+from core.types import PayloadAction, PayloadType, ExchangeName, Region, RequestType
 from infra.messaging.clients.clients import create_consumer
 from infra.messaging.connect.services.cache_coordinator import CacheCoordinator
 from infra.messaging.connect.services.command_validator import GenericValidator
@@ -81,9 +80,9 @@ class KafkaConsumerClient:
         """컨슈머 스트림을 순회하며 레코드를 처리."""
         async for record in self.consumer:
             payload: dict = record.value
-            exchange: str = payload["exchange"]
-            region: str = payload["region"]
-            request_type: str = payload["request_type"]
+            exchange: str = payload["target"]["exchange"]
+            region: str = payload["target"]["region"]
+            request_type: str = payload["target"]["request_type"]
             observed_key: str = f"{exchange}/{region}/{request_type}"
 
             try:
@@ -116,10 +115,12 @@ class KafkaConsumerClient:
                 await self._enqueue_connect_task(ctx)
             except Exception as e:
                 # 가능한 경우에만 ws.error 발행 (필수 키가 모두 존재할 때)
+                logger.error(f"Kafka 컨슈머 오류 발생: {e}")
+
                 target = ConnectionTargetDTO(
-                    exchange=exchange,
-                    region=region,
-                    request_type=request_type,
+                    exchange=cast(ExchangeName, exchange),
+                    region=cast(Region, region),
+                    request_type=cast(RequestType, request_type),
                 )
                 await make_ws_error_event_from_kind(
                     target=target,
@@ -141,16 +142,17 @@ class KafkaConsumerClient:
             except asyncio.CancelledError:
                 logger.info("Kafka 컨슈머 작업 취소 요청 처리: 종료합니다.")
                 break
-            except Exception as e:
-                attempt += 1
-                # 2^attempt 기반, 상한 및 지터 적용
-                backoff = min(max_sleep, 2 ** min(attempt, 5))
-                sleep_s = backoff + random.uniform(0, 1)
-                logger.warning(
-                    f"Kafka 컨슈머 오류 발생, {sleep_s:.1f}s 후 재시도 (시도 {attempt}): {e}"
-                )
-                await self._stop_consumer()
-                await asyncio.sleep(sleep_s)
-                continue
+            # except Exception as e:
+            #     print()
+            #     attempt += 1
+            #     # 2^attempt 기반, 상한 및 지터 적용
+            #     backoff = min(max_sleep, 2 ** min(attempt, 5))
+            #     sleep_s = backoff + random.uniform(0, 1)
+            #     logger.warning(
+            #         f"Kafka 컨슈머 오류 발생, {sleep_s:.1f}s 후 재시도 (시도 {attempt}): {e}"
+            #     )
+            #     await self._stop_consumer()
+            #     await asyncio.sleep(sleep_s)
+            #     continue
             finally:
                 await self._stop_consumer()

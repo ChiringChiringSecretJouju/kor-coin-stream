@@ -8,15 +8,15 @@
 
 from __future__ import annotations
 
+import traceback
 import uuid
-import orjson
 from typing import Final, TypeVar, cast
 
 from pydantic import BaseModel
 
 from common.exceptions.exception_rule import DESERIALIZATION_ERRORS
 from common.logger import PipelineLogger
-from core.types import DEFAULT_SCHEMA_VERSION
+from core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, RequestType
 from core.dto.io.dlq_event import DlqEventDTO
 from core.dto.io.target import ConnectionTargetDTO
 from core.dto.io.error_event import WsEventErrorMetaDTO
@@ -95,11 +95,10 @@ class GenericValidator:
             dlq_event = DlqEventDTO(
                 action="dlq",
                 reason=reason,
-                original_message=payload,
                 target=ConnectionTargetDTO(
-                    exchange=self.exchange_name,
+                    exchange=cast(ExchangeName, self.exchange_name),
                     region="korea",
-                    request_type=self.request_type,
+                    request_type=cast(RequestType, self.request_type),
                 ),
                 meta=WsEventErrorMetaDTO(
                     schema_version=DEFAULT_SCHEMA_VERSION,
@@ -107,6 +106,9 @@ class GenericValidator:
                     observed_key=key,
                     raw_context=payload,
                 ),
+                detail_error={
+                    "validation_error": traceback.format_exc(),
+                },
             )
 
             await self._dlq_producer.send_dlq_event(
