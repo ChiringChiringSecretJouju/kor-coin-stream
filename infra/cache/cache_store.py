@@ -14,34 +14,30 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
-
-
 from redis.asyncio import Redis
 
 from common.logger import PipelineLogger
 from config.settings import redis_settings
-from infra.cache.cache_client import RedisConnectionManager
-from core.dto.internal.common import ConnectionScopeDomain
-from core.dto.io.cache import ConnectionMetaHashDTO
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from core.dto.internal.cache import (
     ConnectionKeyBuilderDomain,
     ConnectionMetaDomain,
     WebsocketConnectionSpecDomain,
 )
+from core.dto.internal.common import ConnectionScopeDomain
+from core.dto.io.cache import ConnectionMetaHashDTO
 from core.dto.io.target import ConnectionTargetDTO
-
 from core.types import (
-    ConnectionStatus,
     CONNECTION_STATUS_CONNECTED,
     CONNECTION_STATUS_CONNECTING,
     CONNECTION_STATUS_DISCONNECTED,
+    ConnectionStatus,
     connection_status_format,
 )
-from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
-import asyncio
-from infra.messaging.connect.producer_client import ErrorEventProducer
+from infra.cache.cache_client import RedisConnectionManager
 
 logger = PipelineLogger.get_logger("redis", "cache_store")
 
@@ -53,11 +49,11 @@ class _MetaRepository:
         self.redis = redis
         self.keys = keys
 
-    async def get(self) -> ConnectionMetaHashDTO | None:
+    async def get(self) -> dict[str, str | int] | None:
         """해시 키의 모든 필드를 읽고, 경계에서 1회 검증해 반환한다.
 
         Returns:
-            ConnectionMetaHashDTO | None: 필수 필드가 유효하면 정규화된 메타, 없거나 부정합이면 None
+            dict[str, str | int] | None: 필수 필드가 유효하면 정규화된 메타, 없거나 부정합이면 None
         """
         raw = await self.redis.hgetall(self.keys.meta())
         if not raw:
@@ -72,7 +68,11 @@ class _MetaRepository:
         }
 
         # I/O 경계에서 Pydantic 모델로 1회 검증 및 정규화
-        model = ConnectionMetaHashDTO.model_validate(decoded)
+        try:
+            model = ConnectionMetaHashDTO.model_validate(decoded)
+        except Exception:
+            # 검증 실패 시 None 반환하여 상위 계층에서 부재로 취급
+            return None
         return model.model_dump()
 
     async def exists(self) -> bool:
@@ -161,15 +161,15 @@ class WebsocketConnectionCache:
         self.symbols: tuple[str, ...] = tuple(spec.symbols)
         self.request_type = spec.scope.request_type
 
-        keys = ConnectionKeyBuilderDomain(
+        self._keys = ConnectionKeyBuilderDomain(
             scope=ConnectionScopeDomain(
                 region=self.region,
                 exchange=self.exchange,
                 request_type=self.request_type,
             )
         )
-        self._meta = _MetaRepository(self.redis, keys)
-        self._symbols = _SymbolsRepository(self.redis, keys)
+        self._meta = _MetaRepository(self.redis, self._keys)
+        self._symbols = _SymbolsRepository(self.redis, self._keys)
 
     @property
     def redis(self) -> Redis:
@@ -253,9 +253,9 @@ class WebsocketConnectionCache:
                 return False
             actual_ttl = ttl or redis_settings.DEFAULT_TTL
             await self._meta.update_status(status, actual_ttl)
-            # 심볼 키도 동일 TTL 유지
+            # 심볼 키도 동일 TTL 유지 (키 빌더 사용)
             await self.redis.expire(
-                f"ws:connection:{self.exchange}:{self.region}:{self.request_type}:symbols",
+                self._keys.symbols(),
                 actual_ttl,
             )
             logger.info(

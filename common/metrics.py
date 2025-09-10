@@ -104,7 +104,6 @@ class MinuteBatchCounter:
         self._state.symbols.clear()
 
     def _schedule_emit_if_ready(self) -> None:
-        """버퍼가 1개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
         """버퍼가 배치 크기 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
         if len(self._state.buffer) < self._batch_size:
             return
