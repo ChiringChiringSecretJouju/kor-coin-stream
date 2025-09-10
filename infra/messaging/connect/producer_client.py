@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -48,6 +49,15 @@ class KafkaProducerClient:
         - 공용 설정 생성기를 사용하여 프로듀서를 생성합니다.
         - 커스텀 파티셔너는 제거했습니다(기본 정책 사용).
         """
+        # 이벤트 루프 가드: 종료 중이거나 루프가 없으면 시작을 시도하지 않음
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_closed():
+                logger.warning("Kafka Producer start skipped: event loop is closed")
+                return False
+        except RuntimeError:
+            logger.warning("Kafka Producer start skipped: no running event loop")
+            return False
         # 이미 시작되어 있으면 바로 True 반환(멱등성 보장)
         if self.producer_started and self.producer is not None:
             return True
@@ -91,7 +101,12 @@ class KafkaProducerClient:
             if isinstance(message, BaseModel):
                 message = message.model_dump()
 
-            await self.start_producer()
+            started = await self.start_producer()
+            if not started:
+                logger.warning(
+                    f"Kafka Producer not started; skipping send to topic '{topic}'"
+                )
+                return False
 
             attempt = 1
             while attempt <= retries:

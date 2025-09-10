@@ -168,6 +168,9 @@ class _BaseWebsocketHandler(ABC):
         except Exception as flush_e:
             logger.warning(f"{self.scope.exchange}: metrics flush 실패 - {flush_e}")
             await self._error_handler.emit_ws_error(flush_e)
+        finally:
+            # 종료 경로에서 남아있을 수 있는 producer를 반드시 정리
+            await self._metrics_producer.stop_producer()
 
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
         """웹소켓에 연결하고 구독/수신 루프를 실행합니다. 끊김 시 재접속을 수행합니다."""
@@ -238,6 +241,7 @@ class _BaseWebsocketHandler(ABC):
                 logger.info(f"{self.scope.exchange}: {delay:.2f}s 후 재접속 시도")
                 await asyncio.sleep(delay)
             finally:
+                await self._batch_flush()
                 await self._health_monitor.stop_monitoring()
 
 

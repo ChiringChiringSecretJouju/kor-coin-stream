@@ -1,4 +1,3 @@
-import traceback
 from typing import Literal
 from datetime import datetime, timezone
 from pydantic import Field

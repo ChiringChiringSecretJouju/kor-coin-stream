@@ -19,10 +19,10 @@ EmitFactory: TypeAlias = Callable[
 
 
 class MinuteBatchCounter:
-    """수신 메시지 카운트를 1분 단위로 합산하고, 5개(5분) 모아 비동기 배치를 발행합니다.
+    """수신 메시지 카운트를 1분 단위로 합산하고, 1개(1분) 모아 비동기 배치를 발행합니다.
 
     - inc()는 초경량이며, 분 경계가 바뀌었을 때만 내부 상태를 롤오버합니다.
-    - 배치 길이가 5가 되면 `emit_factory`에서 생성된 코루틴을
+    - 배치 길이가 1개가 되면 `emit_factory`에서 생성된 코루틴을
       asyncio.create_task로 발행합니다.
     - emit은 비동기로 처리되어 수신 루프를 블로킹하지 않습니다.
 
@@ -96,11 +96,11 @@ class MinuteBatchCounter:
         self._state.symbols.clear()
 
     def _schedule_emit_if_ready(self) -> None:
-        """버퍼가 5개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
-        if len(self._state.buffer) < 5:
+        """버퍼가 1개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
+        if len(self._state.buffer) < 1:
             return
-        items_dicts = self._state.buffer[:5]
-        self._state.buffer = self._state.buffer[5:]
+        items_dicts = self._state.buffer[:1]
+        self._state.buffer = self._state.buffer[1:]
         # dict를 MinuteItem으로 복원하여 타입 일관성 유지
         items: list[MinuteItemDomain] = [
             MinuteItemDomain(

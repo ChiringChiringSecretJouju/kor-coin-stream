@@ -48,5 +48,6 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n프로그램이 종료되었습니다.")
+
     # except Exception as e:
     #     logger.critical(f"예상치 못한 오류로 프로그램이 종료됨: {str(e)}")
