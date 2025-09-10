@@ -16,3 +16,5 @@ aiohttp
 setuptools
 cachetools
 pydantic-settings
+pytest
+pytest-asyncio

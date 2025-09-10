@@ -1,7 +1,7 @@
 from typing import Any, Callable
 from decimal import Decimal
 from collections import deque
-import json
+import orjson
 
 JSONDefault = Callable[[Any], Any]
 Serializer = Callable[[Any], bytes]
@@ -22,11 +22,14 @@ def default_json_encoder(obj: Any) -> Any:
 
 
 def to_bytes(value: Any, default: JSONDefault | None = None) -> bytes:
-    """객체를 UTF-8 JSON bytes로 직렬화.
+    """객체를 UTF-8 JSON bytes(orjson)로 직렬화.
 
-    Args:
-        value: 직렬화할 값
-        default: 추가 커스텀 인코더가 필요할 경우 주입
+    - orjson.dumps 사용, 실패 시 default 인코더 시도 후 str(value)로 폴백
     """
-    encoder = default or default_json_encoder
-    return json.dumps(value, default=encoder).encode("utf-8")
+
+    try:
+        return orjson.dumps(value)
+    except TypeError:
+        if default is not None:
+            return orjson.dumps(default(value))
+        return orjson.dumps(str(value))

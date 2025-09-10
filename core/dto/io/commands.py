@@ -29,7 +29,7 @@ class CommandDTO(BaseIOModelDTO):
 
     type: str
     action: str
-    target: dict[str, Any]
+    target: dict[str, str]
     symbols: list[str]
     connection: ConnectionConfigDTO
     projection: list[str] | None = None

@@ -5,6 +5,7 @@ from core.types._common_types import (
     RequestType,
     SocketParams,
     ConnectionStatus,
+    connection_status_format,
     CONNECTION_STATUS_CONNECTED,
     CONNECTION_STATUS_CONNECTING,
     CONNECTION_STATUS_DISCONNECTED,
@@ -14,7 +15,6 @@ from core.types._exception_types import (
     ErrorCode,
     ErrorDomain,
     ExceptionGroup,
-    RuleDict,
     RuleKind,
     SyncOrAsyncCallable,
     AsyncWrappedCallable,
@@ -42,6 +42,7 @@ __all__ = [
     "CONNECTION_STATUS_CONNECTED",
     "CONNECTION_STATUS_CONNECTING",
     "CONNECTION_STATUS_DISCONNECTED",
+    "connection_status_format",
     # _exception_types
     "ErrorDomain",
     "ErrorCode",

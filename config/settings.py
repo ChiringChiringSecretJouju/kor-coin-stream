@@ -79,7 +79,7 @@ class WebsocketSettings(BaseSettings):
 
 
 # 설정 인스턴스 생성
-kafka_settings: Final = KafkaSettings()
-redis_settings: Final = RedisSettings()
-logging_settings: Final = LoggingSettings()
-websocket_settings: Final = WebsocketSettings()
+kafka_settings = KafkaSettings()
+redis_settings = RedisSettings()
+logging_settings = LoggingSettings()
+websocket_settings = WebsocketSettings()
