@@ -95,7 +95,6 @@ class GenericValidator:
             dlq_event = DlqEventDTO(
                 action="dlq",
                 reason=reason,
-                original_message=payload,
                 target=ConnectionTargetDTO(
                     exchange=cast(ExchangeName, self.exchange_name),
                     region="korea",

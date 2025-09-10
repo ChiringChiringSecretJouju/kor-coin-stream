@@ -1,5 +1,6 @@
-from typing import Any, Literal
-
+from typing import Literal
+from datetime import datetime, timezone
+from pydantic import Field
 from core.dto.io._base import BaseIOModelDTO
 
 from core.types import ErrorCode, ErrorDomain
@@ -36,6 +37,10 @@ class WsErrorEventDTO(BaseIOModelDTO):
     """
 
     action: Literal["error"]
+    # UTC 기준 시각을 추가 제공합니다(후방 호환). 기본값은 현재 UTC.
+    error_timestamp_utc: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     target: ConnectionTargetDTO
     meta: WsEventErrorMetaDTO
     error: WsEventErrorTypeDTO

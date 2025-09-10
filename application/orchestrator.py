@@ -287,13 +287,13 @@ class SubscriptionManager:
         Returns:
             bool: 처리 여부(True면 새 연결 생성 스킵)
         """
-        logger.info(f"이미 실행 중: {_log_string(ctx)} - 재구독 처리")
+        logger.info(f"이미 실행 중: {_log_string(ctx.scope)} - 재구독 처리")
 
         # 1) Korbit 등 리스트 기반: raw 재구독 전송, 캐시 심볼 갱신은 생략
         if isinstance(ctx.socket_params, list):
             if running is not None and hasattr(running, "update_subscription_raw"):
                 await running.update_subscription_raw(ctx.socket_params)  # type: ignore[attr-defined]
-                logger.info(f"재구독 완료(리스트 기반): {_log_string(ctx)}")
+                logger.info(f"재구독 완료(리스트 기반): {_log_string(ctx.scope)}")
             return True
 
         # 2) dict 기반: 심볼 추출 후 캐시 갱신 + 증분 재구독
@@ -310,7 +310,7 @@ class SubscriptionManager:
 
         if running is not None and symbols:
             await running.update_subscription(symbols, subscribe_type)  # type: ignore[attr-defined]
-            logger.info(f"재구독 완료: {_log_string(ctx)} -> {symbols}")
+            logger.info(f"재구독 완료: {_log_string(ctx.scope)} -> {symbols}")
         return True
 
 
@@ -396,7 +396,7 @@ class StreamOrchestrator:
             # 컨텍스트 구성 및 캐시 인스턴스 준비 (심볼은 SubscriptionManager에서 추출/갱신)
             ctx = StreamContextDomain(
                 scope=scope,
-                # socket_params=socket_params,
+                socket_params=socket_params,
             )
             cache: WebsocketConnectionCache = self._cache.make_cache_with(ctx)
             return await self._subs.handle_resubscribe(
@@ -411,7 +411,7 @@ class StreamOrchestrator:
                 scope=scope,
                 err=e,
                 kind="ws",
-                observed_key=_log_string(scope),
+                observed_key=f"{_log_string(scope)}|resubscribe",
                 raw_context={
                     "phase": "resubscribe",
                     "socket_params_type": type(socket_params).__name__,
