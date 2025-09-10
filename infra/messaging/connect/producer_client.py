@@ -125,13 +125,6 @@ class ErrorEventProducer(KafkaProducerClient):
     async def send_error_event(
         self, event: WsErrorEventDTO, key: KeyType = None
     ) -> bool:
-        """ws.error 이벤트를 orjson으로 직렬화하여 전송합니다.
-
-        - BaseModel이면 model_dump() 후 orjson.dumps로 bytes 생성
-        - dict/str 등 비-바이너리도 orjson.dumps로 bytes 생성
-        - 이미 bytes면 그대로 전송
-        """
-
         await self.produce_sending(
             message=event,
             topic=self.topic,
