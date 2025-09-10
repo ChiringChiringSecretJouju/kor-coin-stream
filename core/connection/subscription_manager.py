@@ -12,6 +12,8 @@ from core.dto.internal.subscription import (
     SubscriptionStateDomain,
 )
 from core.types import SocketParams
+from core.dto.io.target import ConnectionTargetDTO
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 
 
 logger = PipelineLogger.get_logger("subscription_manager", "connection")
@@ -31,6 +33,26 @@ class SubscriptionManager:
         self._send_lock = asyncio.Lock()
         # 구독 상태 추적 (ConnectRequestDomain과 의미적으로 분리)
         self._state = SubscriptionStateDomain()
+
+    def _observed_key(self) -> str:
+        return f"{self.scope.exchange}/{self.scope.region}/{self.scope.request_type}"
+
+    async def _emit_error(
+        self, err: BaseException, *, phase: str, extra: dict | None = None
+    ) -> None:
+        """구독 단계 오류를 표준 에러 이벤트로 발행한다."""
+        target = ConnectionTargetDTO(
+            exchange=self.scope.exchange,
+            region=self.scope.region,
+            request_type=self.scope.request_type,
+        )
+        await make_ws_error_event_from_kind(
+            target=target,
+            err=err,
+            kind="ws",
+            observed_key=self._observed_key(),
+            raw_context={"phase": phase, **(extra or {})},
+        )
 
     async def prepare_subscription_message(self, params: SocketParams) -> str:
         """구독 메시지 JSON 직렬화"""
@@ -111,11 +133,21 @@ class SubscriptionManager:
                 logger.info(
                     f"{self.scope.exchange}: 활성 웹소켓이 없어 재구독을 건너뜁니다."
                 )
+                await self._emit_error(
+                    RuntimeError("no active websocket or missing state params"),
+                    phase="update_subscription",
+                    extra={"reason": "websocket_none_or_state_empty"},
+                )
                 return False
 
             if getattr(websocket, "closed", False):
                 logger.info(
                     f"{self.scope.exchange}: 웹소켓이 이미 종료되어 재구독 불가"
+                )
+                await self._emit_error(
+                    RuntimeError("websocket already closed"),
+                    phase="update_subscription",
+                    extra={"reason": "websocket_closed"},
                 )
                 return False
 
@@ -150,6 +182,15 @@ class SubscriptionManager:
 
             except Exception as e:
                 logger.warning(f"{self.scope.exchange}: 재구독 전송 실패: {e}")
+                await self._emit_error(
+                    e,
+                    phase="update_subscription_send",
+                    extra={
+                        "symbols": symbols,
+                        "subscribe_type": subscribe_type,
+                        "merged_total": merge_result.total_symbols,
+                    },
+                )
                 return False
 
     async def update_subscription_raw(
@@ -167,13 +208,23 @@ class SubscriptionManager:
         async with self._send_lock:
             if websocket is None:
                 logger.info(
-                    f"{self.scope.exchange}: 활성 웹소켓이 없어 재구독(raw) 건너뜁니다."
+                    f"{self.scope.exchange}: 활성 웹소켓이 없어 재구독을 건너뜁니다."
+                )
+                await self._emit_error(
+                    RuntimeError("no active websocket for raw update"),
+                    phase="update_subscription_raw",
+                    extra={"reason": "websocket_none"},
                 )
                 return False
 
             if getattr(websocket, "closed", False):
                 logger.info(
-                    f"{self.scope.exchange}: 웹소켓 종료 상태 - 재구독(raw) 불가"
+                    f"{self.scope.exchange}: 웹소켓이 이미 종료되어 재구독 불가"
+                )
+                await self._emit_error(
+                    RuntimeError("websocket already closed"),
+                    phase="update_subscription_raw",
+                    extra={"reason": "websocket_closed"},
                 )
                 return False
 
@@ -194,9 +245,13 @@ class SubscriptionManager:
 
                 logger.info(f"{self.scope.exchange}: 재구독(raw) 메시지 전송 완료")
                 return True
-
             except Exception as e:
-                logger.warning(f"{self.scope.exchange}: 재구독(raw) 전송 실패: {e}")
+                logger.warning(f"{self.scope.exchange}: 재구독 전송 실패(raw): {e}")
+                await self._emit_error(
+                    e,
+                    phase="update_subscription_raw_send",
+                    extra={"params_type": type(params).__name__},
+                )
                 return False
 
     def update_current_params(self, params: SocketParams) -> None:

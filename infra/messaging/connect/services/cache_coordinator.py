@@ -42,12 +42,11 @@ class CacheCoordinator:
 
         spec = WebsocketConnectionSpecDomain(
             scope=ConnectionScopeDomain(
-                exchange=exchange_name,
                 region=region,
+                exchange=exchange_name,
                 request_type=request_type,
             ),
             symbols=tuple(symbols),
-            exchange_name=exchange_name,
         )
         cache = WebsocketConnectionCache(spec)
         existing = await cache.check_connection_exists()

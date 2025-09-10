@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from common.logger import PipelineLogger
 from core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
+from core.dto.io.target import ConnectionTargetDTO
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 
 
 logger = PipelineLogger.get_logger("health_monitor", "connection")
@@ -47,6 +49,33 @@ class ConnectionHealthMonitor:
         self.policy.heartbeat_message = message
         self.policy.heartbeat_timeout = timeout
 
+    async def _emit_error(
+        self, err: BaseException, *, phase: str, extra: dict | None = None
+    ) -> None:
+        """헬스 모니터 단계 오류를 표준 에러 이벤트로 발행한다."""
+        observed_key = (
+            f"{self.scope.exchange}/{self.scope.region}/{self.scope.request_type}"
+        )
+        target = ConnectionTargetDTO(
+            exchange=self.scope.exchange,
+            region=self.scope.region,
+            request_type=self.scope.request_type,
+        )
+        raw_context: dict = {
+            "phase": phase,
+            "heartbeat_kind": self.policy.heartbeat_kind,
+            "heartbeat_timeout": self.policy.heartbeat_timeout,
+            "heartbeat_fail_count": self._heartbeat_fail_count,
+            **(extra or {}),
+        }
+        await make_ws_error_event_from_kind(
+            target=target,
+            err=err,
+            kind="ws",
+            observed_key=observed_key,
+            raw_context=raw_context,
+        )
+
     async def send_heartbeat(self, websocket: Any) -> None:
         """하트비트 전송"""
         try:
@@ -62,6 +91,7 @@ class ConnectionHealthMonitor:
         except Exception as e:
             self._update_heartbeat_status(success=False)
             logger.warning(f"{self.scope.exchange}: 하트비트 전송 실패 - {e}")
+            await self._emit_error(e, phase="send_heartbeat")
             raise
 
     async def start_monitoring(self, websocket: Any, ping_interval: int) -> None:
@@ -109,6 +139,7 @@ class ConnectionHealthMonitor:
                 break
             except Exception as e:
                 logger.error(f"{self.scope.exchange}: 하트비트 루프 에러 - {e}")
+                await self._emit_error(e, phase="heartbeat_loop")
                 break
 
     def _update_heartbeat_status(self, success: bool) -> None:
@@ -122,12 +153,6 @@ class ConnectionHealthMonitor:
     def is_healthy(self) -> bool:
         """연결 상태가 건강한지 확인"""
         return self._heartbeat_fail_count < self.policy.heartbeat_fail_limit
-
-    def update_policy(self, kind: str, message: str | None, timeout: float) -> None:
-        """하트비트 정책 동적 업데이트"""
-        self.policy.heartbeat_kind = kind
-        self.policy.heartbeat_message = message
-        self.policy.heartbeat_timeout = timeout
 
     @property
     def heartbeat_fail_count(self) -> int:

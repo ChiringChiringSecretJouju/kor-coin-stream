@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from common.exceptions.exception_rule import DESERIALIZATION_ERRORS
 from common.logger import PipelineLogger
-from core.types import DEFAULT_SCHEMA_VERSION
+from core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, RequestType
 from core.dto.io.dlq_event import DlqEventDTO
 from core.dto.io.target import ConnectionTargetDTO
 from core.dto.io.error_event import WsEventErrorMetaDTO
@@ -97,9 +97,9 @@ class GenericValidator:
                 reason=reason,
                 original_message=payload,
                 target=ConnectionTargetDTO(
-                    exchange=self.exchange_name,
+                    exchange=cast(ExchangeName, self.exchange_name),
                     region="korea",
-                    request_type=self.request_type,
+                    request_type=cast(RequestType, self.request_type),
                 ),
                 meta=WsEventErrorMetaDTO(
                     schema_version=DEFAULT_SCHEMA_VERSION,

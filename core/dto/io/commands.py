@@ -34,5 +34,9 @@ class CommandDTO(BaseIOModelDTO):
     connection: ConnectionConfigDTO
     projection: list[str] | None = None
     schema_version: str | None = None
+    ttl_ms: int | None = None
+    routing: dict[str, Any] | None = None
+    ts_issue: int | None = None
+    ts_ingest: int | None = None
 
     model_config = ConfigDict(extra="forbid")

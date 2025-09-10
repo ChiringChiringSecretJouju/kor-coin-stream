@@ -9,6 +9,8 @@ from core.dto.internal.cache import WebsocketConnectionSpecDomain
 from core.dto.internal.common import ConnectionScopeDomain
 from core.dto.internal.orchestrator import StreamContextDomain
 from core.types import SocketParams, CONNECTION_STATUS_DISCONNECTED
+from core.dto.io.target import ConnectionTargetDTO
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from exchange.korea import (
     BithumbWebsocketHandler,
     CoinoneWebsocketHandler,
@@ -46,6 +48,40 @@ def _log_string(ctx: ConnectionScopeDomain) -> str:
         str: "exchange/region/request_type" 포맷의 문자열
     """
     return f"{ctx.exchange}/{ctx.region}/{ctx.request_type}"
+
+
+async def _emit_scope_error_event(
+    scope: ConnectionScopeDomain,
+    err: BaseException,
+    *,
+    kind: str,
+    observed_key: str,
+    raw_context: dict | None = None,
+) -> bool:
+    """주어진 scope로 표준 에러 이벤트를 발행하는 헬퍼.
+
+    Args:
+        scope: 연결 스코프
+        err: 예외 객체
+        kind: 분류 kind (예: "ws", "orchestrator")
+        observed_key: 관측 키 (exchange/region/request_type)
+        raw_context: 추가 메타 컨텍스트
+
+    Returns:
+        bool: 전송 성공 여부
+    """
+    target = ConnectionTargetDTO(
+        exchange=scope.exchange,
+        region=scope.region,
+        request_type=scope.request_type,
+    )
+    return await make_ws_error_event_from_kind(
+        target=target,
+        err=err,
+        kind=kind,
+        observed_key=observed_key,
+        raw_context=raw_context or {},
+    )
 
 
 class WebsocketConnector:
@@ -354,18 +390,35 @@ class StreamOrchestrator:
         Returns:
             bool: 재구독을 수행했으면 True, 아니면 False
         """
-        running = self._handlers.get(key)
-        # 컨텍스트 구성 및 캐시 인스턴스 준비 (심볼은 SubscriptionManager에서 추출/갱신)
-        ctx = StreamContextDomain(
-            scope=scope,
-            socket_params=socket_params,
-        )
-        cache: WebsocketConnectionCache = self._cache.make_cache_with(ctx)
-        return await self._subs.handle_resubscribe(
-            running=running,
-            cache=cache,
-            ctx=ctx,
-        )
+
+        try:
+            running = self._handlers.get(key)
+            # 컨텍스트 구성 및 캐시 인스턴스 준비 (심볼은 SubscriptionManager에서 추출/갱신)
+            ctx = StreamContextDomain(
+                scope=scope,
+                # socket_params=socket_params,
+            )
+            cache: WebsocketConnectionCache = self._cache.make_cache_with(ctx)
+            return await self._subs.handle_resubscribe(
+                running=running,
+                cache=cache,
+                ctx=ctx,
+            )
+        except Exception as e:
+            # 재구독 처리 중 예외를 에러 이벤트로 발행
+            logger.error(f"재구독 처리 실패: {_log_string(scope)} - {e}")
+            await _emit_scope_error_event(
+                scope=scope,
+                err=e,
+                kind="ws",
+                observed_key=_log_string(scope),
+                raw_context={
+                    "phase": "resubscribe",
+                    "socket_params_type": type(socket_params).__name__,
+                    "socket_params": socket_params,
+                },
+            )
+            return False
 
     async def connect_from_context(self, ctx: StreamContextDomain) -> None:
         """StreamContextDomain을 받아 웹소켓 연결을 생성/실행합니다.
@@ -394,6 +447,14 @@ class StreamOrchestrator:
 
         if not ctx.url or ctx.socket_params is None:
             logger.error("connection.url 또는 connection.socket_params 누락")
+            # 누락 오류를 에러 이벤트로 발행하고 종료
+            await _emit_scope_error_event(
+                scope=ctx.scope,
+                err=ValueError("missing url or socket_params"),
+                kind="ws",
+                observed_key=_log_string(ctx.scope),
+                raw_context={"phase": "precheck"},
+            )
             return
 
         # 분산 락 제거: 중복 실행은 레지스트리/캐시로 제어
@@ -424,9 +485,16 @@ class StreamOrchestrator:
             await self._cache.on_start_with(ctx, cache)
             # 웹소켓 실행 (끊길 때까지 블로킹)
             await self._connector.run_with(ctx, handler)
-        except asyncio.CancelledError:
-            logger.info(f"{_log_string(ctx.scope)}: 작업 취소")
-            raise
+        except Exception as e:
+            # 런타임 예외를 에러 이벤트로 발행
+            logger.error(f"연결 실행 중 오류: {_log_string(ctx.scope)} - {e}")
+            await _emit_scope_error_event(
+                scope=ctx.scope,
+                err=e,
+                kind="ws",
+                observed_key=_log_string(ctx.scope),
+                raw_context={"phase": "run_with"},
+            )
         finally:
             await self._cache.on_stop(cache)
             # 태스크/핸들러 레지스트리 정리

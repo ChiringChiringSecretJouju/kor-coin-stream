@@ -20,17 +20,20 @@ class ConnectionMetaDomain:
     last_active: int
     scope: ConnectionScopeDomain
 
-    def to_redis_mapping(self) -> dict[str, str | int | dict[str, str]]:
+    def to_redis_mapping(self) -> dict[str, str | int]:
         """Redis 해시로 쓰기 위한 매핑(dict)을 생성합니다.
 
         - Enum은 문자열 저장을 위해 `.value`로 변환합니다
+        - scope는 개별 필드로 분해하여 저장합니다
         """
         return {
             "status": self.status.value,
             "created_at": self.created_at,
             "last_active": self.last_active,
             "connection_id": self.connection_id,
-            "scope": asdict(self.scope),
+            "exchange": self.scope.exchange,
+            "region": self.scope.region,
+            "request_type": self.scope.request_type,
         }
 
 
