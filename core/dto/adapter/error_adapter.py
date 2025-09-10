@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import traceback
 from core.dto.io.error_event import (
     WsErrorEventDTO,
     WsEventErrorMetaDTO,
@@ -53,7 +54,10 @@ async def make_ws_error_event_from_kind(
         raw_context=raw_context or {},
     )
     etype: WsEventErrorTypeDTO = build_error_type(
-        error_message={"message": str(err)},
+        error_message={
+            "message": str(err),
+            "detil_error": traceback.format_exc(),
+        },
         error_domain=domain,
         error_code=code,
     )

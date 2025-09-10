@@ -12,7 +12,6 @@ def update_dict(message: dict, key: str) -> dict:
     """
     merged = message.copy()
     data_sub = message.get(key)
-
     if isinstance(data_sub, dict):
         merged.update(data_sub)
     elif isinstance(data_sub, list) and data_sub and isinstance(data_sub[0], dict):

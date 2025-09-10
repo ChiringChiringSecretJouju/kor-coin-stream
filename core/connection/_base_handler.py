@@ -75,6 +75,24 @@ class _BaseWebsocketHandler(ABC):
         self._subscription_manager = SubscriptionManager(self.scope)
         self._health_monitor = ConnectionHealthMonitor(self.scope, self.policy)
         self._error_handler = ConnectionErrorHandler(self.scope)
+        # 롱-리빙 메트릭 프로듀서
+        self._metrics_producer = MetricsProducer()
+
+        # emit_factory는 인스턴스 컨텍스트(self.scope, self._metrics_producer)를 캡처한 비동기 함수여야 합니다.
+        async def _emit_factory(
+            items: list[MinuteItemDomain], start_ts_kst: int, end_ts_kst: int
+        ) -> None:
+            await self._metrics_producer.send_counting_batch(
+                scope=self.scope,
+                items=items,
+                range_start_ts_kst=start_ts_kst,
+                range_end_ts_kst=end_ts_kst,
+                key=self.scope.to_key(),
+            )
+
+        self._minute_batch_counter = MinuteBatchCounter(
+            emit_factory=_emit_factory, logger=logger
+        )
 
     def _log_status(self, status: str) -> None:
         """연결 상태 로깅"""
@@ -99,7 +117,7 @@ class _BaseWebsocketHandler(ABC):
 
     async def _sending_socket_parameter(
         self, params: dict[str, Any] | list[Any]
-    ) -> str:
+    ) -> str | bytes:
         """구독 메시지 준비 (구독 매니저로 위임)"""
         return await self._subscription_manager.prepare_subscription_message(params)
 
@@ -144,6 +162,13 @@ class _BaseWebsocketHandler(ABC):
                 symbols=params.get("symbols") if isinstance(params, dict) else None,
             )
 
+    async def _batch_flush(self) -> None:
+        try:
+            await self._minute_batch_counter.flush_now()
+        except Exception as flush_e:
+            logger.warning(f"{self.scope.exchange}: metrics flush 실패 - {flush_e}")
+            await self._error_handler.emit_ws_error(flush_e)
+
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
         """웹소켓에 연결하고 구독/수신 루프를 실행합니다. 끊김 시 재접속을 수행합니다."""
         socket_parameters: dict | list = parameter_info
@@ -168,8 +193,8 @@ class _BaseWebsocketHandler(ABC):
                     self._subscription_manager.update_current_params(socket_parameters)
 
                     # 구독 파라미터 전송
-                    subscription_message = await self._sending_socket_parameter(
-                        socket_parameters
+                    subscription_message: str | bytes = (
+                        await self._sending_socket_parameter(socket_parameters)
                     )
                     await websocket.send(subscription_message)
                     logger.info(f"{self.scope.exchange}: 구독 파라미터 전송 완료")
@@ -182,19 +207,19 @@ class _BaseWebsocketHandler(ABC):
                     await self._health_monitor.start_monitoring(
                         websocket, ping_interval
                     )
-                    try:
-                        await self._handle_message_loop(websocket, timeout)
-                    finally:
-                        await self._health_monitor.stop_monitoring()
+                    await self._handle_message_loop(websocket, timeout)
 
                     # 정상 종료라면 루프 종료
                     self._log_status("stopped")
                     self._current_websocket = None
+
+                    # 종료 전 잔여 메트릭을 동기 플러시 후 프로듀서 정리
+                    await self._batch_flush()
                     return
             except asyncio.CancelledError:
                 logger.info(f"{self.scope.exchange}: 연결 작업이 취소되었습니다.")
                 self._log_status("cancelled")
-                raise
+                await self._batch_flush()
             except SOCKET_EXCEPTIONS as e:
                 self._log_status("disconnected")
                 logger.warning(
@@ -212,6 +237,8 @@ class _BaseWebsocketHandler(ABC):
                 attempt += 1
                 logger.info(f"{self.scope.exchange}: {delay:.2f}s 후 재접속 시도")
                 await asyncio.sleep(delay)
+            finally:
+                await self._health_monitor.stop_monitoring()
 
 
 class BaseKoreaWebsocketHandler(_BaseWebsocketHandler):
@@ -226,32 +253,19 @@ class BaseKoreaWebsocketHandler(_BaseWebsocketHandler):
         # 한국 거래소 설정
         self.ping_interval = websocket_settings.HEARTBEAT_INTERVAL
         self.projection: list[str] | None = None  # 필드 필터링용
-        self._metrics_producer = MetricsProducer()
-
-        async def _emit_factory(
-            items: list[MinuteItemDomain], start_ts_kst: int, end_ts_kst: int
-        ) -> None:
-            await self._metrics_producer.send_counting_batch(
-                scope=self.scope,
-                items=items,
-                range_start_ts_kst=start_ts_kst,
-                range_end_ts_kst=end_ts_kst,
-                key=self.scope.to_key(),
-            )
-
-        self._minute_batch_counter = MinuteBatchCounter(
-            emit_factory=_emit_factory, logger=logger
-        )
 
     def _extract_symbol(self, message: dict[str, Any]) -> str | None:
         """심볼 추출 (위임)"""
         return _extract_symbol_impl(message)
 
-    def _parse_message(self, message: str) -> dict[str, Any]:
+    def _parse_message(self, message: str | bytes) -> dict[str, Any]:
         """메시지 파싱 공통 로직"""
+        if isinstance(message, bytes):
+            message = json.loads(message.decode("utf-8"))
         if isinstance(message, str):
-            return json.loads(message)
-        return {}
+            message = json.loads(message)
+
+        return message
 
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
         """티커 메시지 처리 함수"""

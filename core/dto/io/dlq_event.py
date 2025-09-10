@@ -1,3 +1,4 @@
+import traceback
 from typing import Literal
 from datetime import datetime, timezone
 from pydantic import Field
@@ -22,3 +23,4 @@ class DlqEventDTO(BaseIOModelDTO):
     )
     target: ConnectionTargetDTO | None = None
     meta: WsEventErrorMetaDTO
+    detail_error: dict[str, str]

@@ -35,6 +35,7 @@ class MinuteBatchCounter:
       -> Coroutine 생성자
     logger: 로깅 인스턴스
     """
+
     def __init__(self, emit_factory: EmitFactory, logger: PipelineLogger) -> None:
         """
         Args:
@@ -122,3 +123,31 @@ class MinuteBatchCounter:
                 )
 
         task.add_done_callback(_done_cb)
+
+    async def flush_now(self) -> None:
+        """잔여 버퍼를 즉시 동기 전송합니다.
+
+        - 현재 분 누계가 남아 있으면 롤오버하여 버퍼에 적재한 뒤 전송합니다.
+        - 종료/정리 시점에서 호출하여 메트릭 손실을 줄입니다.
+        """
+        # 현재 분에 누계가 있으면 버퍼로 롤오버
+        if self._state.total > 0 or self._state.symbols:
+            self._rollover_minute()
+
+        if not self._state.buffer:
+            return
+
+        # 버퍼 전체를 한 번에 전송
+        items: list[MinuteItemDomain] = [
+            MinuteItemDomain(
+                minute_start_ts_kst=d["minute_start_ts_kst"],
+                total=d["total"],
+                details=d["details"],
+            )
+            for d in self._state.buffer
+        ]
+        range_start_ts_kst = items[0].minute_start_ts_kst
+        range_end_ts_kst = items[-1].minute_start_ts_kst + 59
+
+        await self._emit_factory(items, range_start_ts_kst, range_end_ts_kst)
+        self._state.buffer.clear()

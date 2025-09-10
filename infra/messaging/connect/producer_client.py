@@ -48,10 +48,16 @@ class KafkaProducerClient:
         - 공용 설정 생성기를 사용하여 프로듀서를 생성합니다.
         - 커스텀 파티셔너는 제거했습니다(기본 정책 사용).
         """
-        if not self.producer_started:
+        # 이미 시작되어 있으면 바로 True 반환(멱등성 보장)
+        if self.producer_started and self.producer is not None:
+            return True
+
+        # 프로듀서 미생성 시 생성
+        if self.producer is None:
             # 기본 설정은 messaging.clients.clients 상수를 사용하며,
             # 직렬화 방식만 공용 Serializer로 오버라이드합니다.
             self.producer = create_producer(value_serializer=serializer)
+
         # 헬퍼 메서드를 통해 시작 시도
         result: bool = await self._execute_with_logging(action=self.producer.start)
         if result:
@@ -67,7 +73,13 @@ class KafkaProducerClient:
             logger.info("Kafka Producer stopped")
 
     async def produce_sending(
-        self, message: Any, topic: str, key: KeyType, retries: int = 3
+        self,
+        message: Any,
+        topic: str,
+        key: KeyType,
+        retries: int = 3,
+        *,
+        stop_after_send: bool = True,
     ) -> bool:
         """카프카 전송 공통 루틴.
 
@@ -90,7 +102,8 @@ class KafkaProducerClient:
                 )
                 return True  # 성공 시 즉시 반환
         finally:
-            await self.stop_producer()
+            if stop_after_send:
+                await self.stop_producer()
 
 
 class ConnectRequestProducer(KafkaProducerClient):
@@ -157,7 +170,7 @@ class DlqProducer(KafkaProducerClient):
 class MetricsProducer(KafkaProducerClient):
     """수신 메시지 카운팅 배치를 ws.counting.message 토픽으로 발행하는 프로듀서."""
 
-    def __init__(self, topic: str = "ws.counting.message") -> None:
+    def __init__(self, topic: str = "ws.counting.message.korea") -> None:
         super().__init__()
         self.topic = topic
 
@@ -200,4 +213,5 @@ class MetricsProducer(KafkaProducerClient):
             message=payload,
             topic=self.topic,
             key=key,
+            stop_after_send=False,
         )

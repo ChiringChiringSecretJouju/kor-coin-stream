@@ -8,8 +8,8 @@
 
 from __future__ import annotations
 
+import traceback
 import uuid
-import orjson
 from typing import Final, TypeVar, cast
 
 from pydantic import BaseModel
@@ -106,6 +106,9 @@ class GenericValidator:
                     observed_key=key,
                     raw_context=payload,
                 ),
+                detail_error={
+                    "validation_error": traceback.format_exc(),
+                },
             )
 
             await self._dlq_producer.send_dlq_event(
