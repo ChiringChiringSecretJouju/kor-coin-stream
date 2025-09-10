@@ -68,11 +68,8 @@ class _MetaRepository:
         }
 
         # I/O 경계에서 Pydantic 모델로 1회 검증 및 정규화
-        try:
-            model = ConnectionMetaHashDTO.model_validate(decoded)
-        except Exception:
-            # 검증 실패 시 None 반환하여 상위 계층에서 부재로 취급
-            return None
+        model = ConnectionMetaHashDTO.model_validate(decoded)
+
         return model.model_dump()
 
     async def exists(self) -> bool:
