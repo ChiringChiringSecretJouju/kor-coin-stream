@@ -36,7 +36,12 @@ class MinuteBatchCounter:
     logger: 로깅 인스턴스
     """
 
-    def __init__(self, emit_factory: EmitFactory, logger: PipelineLogger) -> None:
+    def __init__(
+        self,
+        emit_factory: EmitFactory,
+        logger: PipelineLogger,
+        batch_size: int = 1,
+    ) -> None:
         """
         Args:
             emit_factory:
@@ -53,6 +58,8 @@ class MinuteBatchCounter:
             symbols={},
             buffer=[],
         )
+        # 배치 크기(분 단위). 최소 1분 보장
+        self._batch_size: int = max(1, int(batch_size))
 
     def inc(self, n: int = 1, symbol: str | None = None) -> None:
         """
@@ -97,10 +104,10 @@ class MinuteBatchCounter:
 
     def _schedule_emit_if_ready(self) -> None:
         """버퍼가 1개 이상이면 비동기 배치 전송 태스크를 스케줄합니다."""
-        if len(self._state.buffer) < 1:
+        if len(self._state.buffer) < self._batch_size:
             return
-        items_dicts = self._state.buffer[:1]
-        self._state.buffer = self._state.buffer[1:]
+        items_dicts = self._state.buffer[: self._batch_size]
+        self._state.buffer = self._state.buffer[self._batch_size :]
         # dict를 MinuteItem으로 복원하여 타입 일관성 유지
         items: list[MinuteItemDomain] = [
             MinuteItemDomain(
