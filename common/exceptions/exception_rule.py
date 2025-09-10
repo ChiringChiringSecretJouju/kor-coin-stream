@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-
+from pydantic import ValidationError
 from redis.exceptions import (
     AuthenticationError as RedisAuthenticationError,
     ConnectionError as RedisConnectionError,
@@ -38,6 +38,7 @@ DESERIALIZATION_ERRORS = (
     TypeError,
     KeyError,
     AttributeError,
+    ValidationError,
 )
 
 # 소켓/웹소켓 등

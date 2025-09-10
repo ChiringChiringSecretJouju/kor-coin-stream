@@ -7,6 +7,15 @@ from core.types import ErrorCode, ErrorDomain
 from core.dto.io.target import ConnectionTargetDTO
 
 
+class WsEventErrorTypeDTO(BaseIOModelDTO):
+    """에러 타입 DTO (I/O 경계용 Pydantic v2 모델)."""
+
+    error_type: str
+    error_message: dict
+    error_domain: ErrorDomain
+    error_code: ErrorCode
+
+
 class WsEventErrorMetaDTO(BaseIOModelDTO):
     """에러 메타데이터 DTO (I/O 경계용 Pydantic v2 모델).
 
@@ -18,8 +27,6 @@ class WsEventErrorMetaDTO(BaseIOModelDTO):
     correlation_id: str | None = None
     observed_key: str | None = None
     raw_context: dict[str, Any] | None = None
-    error_domain: ErrorDomain | None = None
-    error_code: ErrorCode | None = None
 
 
 class WsErrorEventDTO(BaseIOModelDTO):
@@ -30,22 +37,6 @@ class WsErrorEventDTO(BaseIOModelDTO):
     """
 
     action: Literal["error"]
-    message: str
     target: ConnectionTargetDTO
     meta: WsEventErrorMetaDTO
-
-
-class ErrorEventRequestDTO(BaseIOModelDTO):
-    """에러 이벤트 요청 DTO.
-
-    - 프로듀서 메서드의 장황한 인자를 단일 DTO로 캡슐화합니다.
-    - 내부적으로 `make_ws_error_event(...)` 호출로 최종 `WsErrorEventDTO`를 생성합니다.
-    """
-
-    error_domain: ErrorDomain
-    error_code: ErrorCode
-    message: str
-    target: ConnectionTargetDTO
-    correlation_id: str | None = None
-    observed_key: str | None = None
-    raw_context: dict[str, Any] | None = None
+    error: WsEventErrorTypeDTO

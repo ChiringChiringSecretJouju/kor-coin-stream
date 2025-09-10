@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Final, Literal, TypeAlias
+from typing import Any, Final, Literal, TypeAlias, assert_never
 from enum import Enum
 
 DEFAULT_SCHEMA_VERSION: Final[str] = "1.0"
@@ -31,3 +31,17 @@ class ConnectionStatus(Enum):
 CONNECTION_STATUS_CONNECTED: Final[ConnectionStatus] = ConnectionStatus.CONNECTED
 CONNECTION_STATUS_CONNECTING: Final[ConnectionStatus] = ConnectionStatus.CONNECTING
 CONNECTION_STATUS_DISCONNECTED: Final[ConnectionStatus] = ConnectionStatus.DISCONNECTED
+
+
+def connection_status_format(status: ConnectionStatus) -> str:
+    """상태 로깅 포맷터: Enum 분기 완전탐색 보장."""
+    match status:
+        case ConnectionStatus.CONNECTED:
+            return ConnectionStatus.CONNECTED.value
+        case ConnectionStatus.CONNECTING:
+            return ConnectionStatus.CONNECTING.value
+        case ConnectionStatus.DISCONNECTED:
+            return ConnectionStatus.DISCONNECTED.value
+        case _:
+            # 타입 시스템 관점에서 도달 불가이나, 방어적으로 처리
+            assert_never(status)

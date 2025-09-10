@@ -42,6 +42,7 @@ __all__ = [
     "CONNECTION_STATUS_CONNECTED",
     "CONNECTION_STATUS_CONNECTING",
     "CONNECTION_STATUS_DISCONNECTED",
+    "connection_status_format",
     # _exception_types
     "ErrorDomain",
     "ErrorCode",
