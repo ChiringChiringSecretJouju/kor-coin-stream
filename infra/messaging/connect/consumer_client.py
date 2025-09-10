@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import random
 import asyncio
-from typing import Final, Any
+from typing import Any, Final
 
 from aiokafka import AIOKafkaConsumer
-from common.exceptions.error_wrappers import kafka_exception_wrapped
-from common.logger import PipelineLogger
-from core.types import PayloadAction, PayloadType
-from core.dto.io.commands import CommandDTO
+
 from application.orchestrator import StreamOrchestrator
+from common.logger import PipelineLogger
+from core.dto.adapter.stream_context import adapter_stream_context
+from core.dto.internal.orchestrator import StreamContextDomain
+from core.dto.io.commands import CommandDTO
+from core.dto.io.target import ConnectionTargetDTO
+from core.types import PayloadAction, PayloadType
 from infra.messaging.clients.clients import create_consumer
-from infra.messaging.connect.producer_client import DlqProducer
 from infra.messaging.connect.services.cache_coordinator import CacheCoordinator
 from infra.messaging.connect.services.command_validator import GenericValidator
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 
 logger: Final = PipelineLogger.get_logger("consumer", "app")
 
@@ -37,19 +40,13 @@ class KafkaConsumerClient:
         self.topic = topic
         self.consumer: AIOKafkaConsumer | None = None
         self._tasks: set[asyncio.Task[None]] = set()
-        # Producers for DLQ
-        self._dlq_producer = DlqProducer()
-        # Services
         self._cache_coord = CacheCoordinator()
-        self._validator = GenericValidator()
 
-    @kafka_exception_wrapped()
     async def _start_consumer(self) -> None:
         self.consumer = create_consumer(self.topic)
         await self.consumer.start()
         logger.info(f"Kafka 소비 시작 - topic: {self.topic}")
 
-    @kafka_exception_wrapped()
     async def _stop_consumer(self) -> None:
         if self.consumer is not None:
             await self.consumer.stop()
@@ -70,9 +67,9 @@ class KafkaConsumerClient:
                 logger.debug(f"무시: type!={PayloadType.STATUS}, 받음: {type_val}")
                 return False
 
-    async def _enqueue_connect_task(self, validated: dict[str, Any]) -> None:
+    async def _enqueue_connect_task(self, validated: StreamContextDomain) -> None:
         """오케스트레이터 연결 작업을 백그라운드 태스크로 등록."""
-        task = asyncio.create_task(self.orchestrator.connect_from_payload(validated))
+        task = asyncio.create_task(self.orchestrator.connect_from_context(validated))
         self._tasks.add(task)
 
         def _on_done(t: asyncio.Task[None]) -> None:
@@ -84,23 +81,53 @@ class KafkaConsumerClient:
         """컨슈머 스트림을 순회하며 레코드를 처리."""
         async for record in self.consumer:
             payload: dict = record.value
-            if not self._should_process(payload):
-                continue
+            exchange: str = payload["exchange"]
+            region: str = payload["region"]
+            request_type: str = payload["request_type"]
+            observed_key: str = f"{exchange}/{region}/{request_type}"
 
-            # CommandDTO로 검증 및 변환
-            validated_dto = await self._validator.validate_dto(
-                key=record.key,
-                payload=payload,
-                dto_class=CommandDTO,
-            )
-            if validated_dto is None:
-                continue
+            try:
+                if not self._should_process(payload):
+                    continue
 
-            skip: bool = await self._cache_coord.handle_and_maybe_skip(validated_dto)
-            if skip:
-                continue
+                # CommandDTO로 검증 및 변환
+                _validated = GenericValidator(
+                    exchange_name=exchange,
+                    request_type=request_type,
+                )
+                validated_dto = await _validated.validate_dto(
+                    key=record.key,
+                    payload=payload,
+                    dto_class=CommandDTO,
+                )
+                if validated_dto is None:
+                    continue
 
-            await self._enqueue_connect_task(validated_dto)
+                skip: bool = await self._cache_coord.handle_and_maybe_skip(
+                    validated_dto
+                )
+
+                if skip:
+                    continue
+
+                # Validator 성공 → 내부 도메인 컨텍스트로 어댑트
+                ctx: StreamContextDomain = adapter_stream_context(validated_dto)
+
+                await self._enqueue_connect_task(ctx)
+            except Exception as e:
+                # 가능한 경우에만 ws.error 발행 (필수 키가 모두 존재할 때)
+                target = ConnectionTargetDTO(
+                    exchange=exchange,
+                    region=region,
+                    request_type=request_type,
+                )
+                await make_ws_error_event_from_kind(
+                    target=target,
+                    err=e,
+                    kind="kafka",
+                    observed_key=observed_key,
+                    raw_context=None,
+                )
 
     async def run(self) -> None:
         # 지수 백오프 + 지터 기반 재시도 루프

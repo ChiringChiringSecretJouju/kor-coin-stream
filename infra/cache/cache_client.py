@@ -3,7 +3,6 @@ from __future__ import annotations
 import redis.asyncio as redis
 from redis.asyncio import Redis
 
-from common.exceptions.error_wrappers import redis_exception_wrapped
 from common.logger import PipelineLogger
 from config.settings import redis_settings
 
@@ -25,7 +24,6 @@ class RedisConnectionManager:
             cls._instance = cls()
         return cls._instance
 
-    @redis_exception_wrapped()
     async def initialize(self, redis_url: str | None = None) -> None:
         if self._redis is None:
             url = redis_url or redis_settings.url
@@ -37,7 +35,6 @@ class RedisConnectionManager:
             await self._redis.ping()
             logger.info("Redis 연결 성공")
 
-    @redis_exception_wrapped()
     async def close(self) -> None:
         if self._redis:
             await self._redis.close()
@@ -45,6 +42,5 @@ class RedisConnectionManager:
             logger.info("Redis 연결 종료")
 
     @property
-    @redis_exception_wrapped()
     def client(self) -> Redis:
         return self._redis

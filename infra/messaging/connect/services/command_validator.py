@@ -14,7 +14,6 @@ from typing import Final, TypeVar, cast
 
 from pydantic import BaseModel
 
-from common.exceptions.error_wrappers import kafka_exception_wrapped
 from common.exceptions.exception_rule import DESERIALIZATION_ERRORS
 from common.logger import PipelineLogger
 from core.types import DEFAULT_SCHEMA_VERSION
@@ -42,7 +41,6 @@ class GenericValidator:
         self.exchange_name = exchange_name
         self.request_type = request_type
 
-    @kafka_exception_wrapped()
     async def validate_dto(
         self,
         payload: dict,

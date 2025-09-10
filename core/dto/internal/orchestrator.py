@@ -27,3 +27,4 @@ class StreamContextDomain:
     socket_params: SocketParams
     url: str | None = None
     symbols: tuple[str, ...] = ()
+    projection: list[str] | None = None

@@ -3,7 +3,6 @@ from __future__ import annotations
 from enum import Enum
 from typing import TypeAlias, Callable, ParamSpec, TypeVar, Awaitable
 
-from core.dto.internal.common import RuleDomain
 
 # 타입 파라미터 정의
 P = ParamSpec("P")
@@ -41,7 +40,6 @@ class ErrorCode(str, Enum):
 ErrorCategory: TypeAlias = tuple[ErrorDomain, ErrorCode, bool]
 ExceptionGroup: TypeAlias = type[BaseException] | tuple[type[BaseException], ...]
 RuleKind: TypeAlias = tuple[str, ...]
-RuleDict: TypeAlias = dict[str, list[RuleDomain]]
 
 # 데코레이터 타입 별칭
 SyncOrAsyncCallable: TypeAlias = Callable[P, R] | Callable[P, Awaitable[R]]

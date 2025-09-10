@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TypeAlias
 from pydantic import ValidationError
 from redis.exceptions import (
     AuthenticationError as RedisAuthenticationError,
@@ -13,7 +14,7 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketExce
 from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 
 from core.dto.internal.common import RuleDomain
-from core.types import ErrorCode, ErrorDomain, RuleDict
+from core.types import ErrorCode, ErrorDomain, ErrorCategory
 
 
 # Kafka
@@ -158,6 +159,7 @@ EXPECTED_EXCEPTIONS = (
     *RedisException,
 )
 
+RuleDict: TypeAlias = dict[str, list[RuleDomain]]
 RULES_BY_KIND: RuleDict = {
     "kafka": RULES_FOR_KAFKA,
     "redis": RULES_FOR_REDIS,
@@ -166,6 +168,23 @@ RULES_BY_KIND: RuleDict = {
 }
 
 
-def get_rules_for(kind: str) -> list[RuleDomain]:
-    """kind에 해당하는 규칙 리스트 반환. 알 수 없는 kind는 RULES_ALL로 폴백."""
-    return RULES_BY_KIND.get(kind, RULES_FOR_INFRA)
+def classify_exception(err: BaseException, kind: str) -> ErrorCategory:
+    """예외 → (ErrorDomain, ErrorCode, retryable) 분류기 (규칙 테이블 기반)
+
+    - if-else 분기를 제거하고, 선언적 규칙을 순서대로 평가합니다.
+    - 규칙은 "구체 → 포괄" 순서로 선언되어 가장 특수한 규칙이 먼저 매칭됩니다.
+    """
+
+    # 일급 함수로 합병(사유 -> 예외 테이블에서 바로 매칭)
+    def get_rules_for(kind: str) -> list[RuleDomain]:
+        """kind에 해당하는 규칙 리스트 반환. 알 수 없는 kind는 RULES_ALL로 폴백."""
+        return RULES_BY_KIND.get(kind, RULES_FOR_INFRA)
+
+    rules: list[RuleDomain] = get_rules_for(kind)
+    for rule in rules:
+        # 예외 타입 매칭 (단일 타입 또는 타입 튜플)
+        if isinstance(err, rule.exc):
+            return rule.result
+
+    # 알 수 없는 경우 기본값
+    return (ErrorDomain.UNKNOWN, ErrorCode.UNKNOWN_ERROR, False)

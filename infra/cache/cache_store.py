@@ -21,7 +21,6 @@ import uuid
 from redis.asyncio import Redis
 
 from common.logger import PipelineLogger
-from common.exceptions.error_wrappers import redis_exception_wrapped
 from config.settings import redis_settings
 from infra.cache.cache_client import RedisConnectionManager
 from core.dto.io.cache import ConnectionMetaHashDTO
@@ -30,14 +29,16 @@ from core.dto.internal.cache import (
     ConnectionMetaDomain,
     WebsocketConnectionSpecDomain,
 )
-from core.dto.internal.common import ConnectionScopeDomain
+from core.dto.io.target import ConnectionTargetDTO
 from core.types import (
     ConnectionStatus,
-    connection_status_format,
     CONNECTION_STATUS_CONNECTED,
     CONNECTION_STATUS_CONNECTING,
     CONNECTION_STATUS_DISCONNECTED,
+    connection_status_format,
 )
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
+from infra.messaging.connect.producer_client import ErrorEventProducer
 
 logger = PipelineLogger.get_logger("redis", "cache_store")
 
@@ -49,7 +50,6 @@ class _MetaRepository:
         self.redis = redis
         self.keys = keys
 
-    @redis_exception_wrapped()
     async def get(self) -> ConnectionMetaHashDTO | None:
         """해시 키의 모든 필드를 읽고, 경계에서 1회 검증해 반환한다.
 
@@ -72,12 +72,10 @@ class _MetaRepository:
         model = ConnectionMetaHashDTO.model_validate(decoded)
         return model.model_dump()
 
-    @redis_exception_wrapped()
     async def exists(self) -> bool:
         """해시 키가 존재하는지 확인한다."""
         return bool(await self.redis.exists(self.keys.meta()))
 
-    @redis_exception_wrapped()
     async def set_initial(self, meta: ConnectionMetaDomain, ttl: int) -> None:
         """초기 메타 해시를 설정한다.
 
@@ -87,7 +85,6 @@ class _MetaRepository:
         await self.redis.hset(self.keys.meta(), mapping=meta.to_redis_mapping())
         await self.redis.expire(self.keys.meta(), ttl)
 
-    @redis_exception_wrapped()
     async def update_status(self, status: ConnectionStatus, ttl: int) -> None:
         """상태와 마지막 활성 시간을 갱신한다.
 
@@ -99,7 +96,6 @@ class _MetaRepository:
         )
         await self.redis.expire(self.keys.meta(), ttl)
 
-    @redis_exception_wrapped()
     async def delete(self) -> int:
         return await self.redis.delete(self.keys.meta())
 
@@ -111,7 +107,6 @@ class _SymbolsRepository:
         self.redis = redis
         self.keys = keys
 
-    @redis_exception_wrapped()
     async def get_all(self) -> list[str]:
         """Set에서 모든 멤버를 읽어온다."""
         members = await self.redis.smembers(self.keys.symbols())
@@ -121,7 +116,6 @@ class _SymbolsRepository:
 
         return sorted([_decode(s) for s in members])
 
-    @redis_exception_wrapped()
     async def replace(self, symbols: list[str], ttl: int) -> None:
         """Set을 교체한다."""
         lua = (
@@ -180,29 +174,31 @@ class WebsocketConnectionCache:
         """Redis 클라이언트."""
         return self._redis_manager.client
 
-    @redis_exception_wrapped()
     async def check_connection_exists(self) -> dict[str, str | int | list[str]] | None:
         """현재 연결 상태(메타+심볼)를 조회합니다.
 
         존재하지 않거나 부정합이면 None을 반환합니다.
         """
-        meta = await self._meta.get()
-        if not meta:
-            return None
-        symbols = await self._symbols.get_all()
-        # 검증된 메타 + 심볼로 단순 조립
-        return {
-            "status": meta["status"],
-            "created_at": meta["created_at"],
-            "last_active": meta["last_active"],
-            "connection_id": meta["connection_id"],
-            "exchange": meta["exchange"],
-            "region": meta["region"],
-            "request_type": meta["request_type"],
-            "symbols": symbols,
-        }
+        try:
+            meta = await self._meta.get()
+            if not meta:
+                return None
+            symbols = await self._symbols.get_all()
+            # 검증된 메타 + 심볼로 단순 조립
+            return {
+                "status": meta["status"],
+                "created_at": meta["created_at"],
+                "last_active": meta["last_active"],
+                "connection_id": meta["connection_id"],
+                "exchange": meta["exchange"],
+                "region": meta["region"],
+                "request_type": meta["request_type"],
+                "symbols": symbols,
+            }
+        except Exception as e:
+            await self._emit_error(e)
+            raise
 
-    @redis_exception_wrapped()
     async def set_connection_state(
         self,
         status: ConnectionStatus,
@@ -215,26 +211,29 @@ class WebsocketConnectionCache:
         - 메타 해시를 생성(초기 상태/타임스탬프/ID 포함)
         - 심볼 세트 대체 및 동일 TTL 부여
         """
-        actual_ttl = ttl or redis_settings.DEFAULT_TTL
-        actual_conn_id = connection_id or str(uuid.uuid4())
-        now = int(time.time())
+        try:
+            actual_ttl = ttl or redis_settings.DEFAULT_TTL
+            actual_conn_id = connection_id or str(uuid.uuid4())
+            now = int(time.time())
 
-        # 메타 해시 생성
-        meta = ConnectionMetaDomain(
-            status=status,
-            connection_id=actual_conn_id,
-            created_at=now,
-            last_active=now,
-            scope=scope,
-        )
-        await self._meta.set_initial(meta=meta, ttl=actual_ttl)
-        await self._symbols.replace(list(self.symbols), actual_ttl)
-        logger.info(
-            f"연결 상태 설정: {scope.exchange}/{scope.region}/{scope.request_type}, \n"
-            f"상태={connection_status_format(status)}\t심볼={len(self.symbols)}개\tID={actual_conn_id}"
-        )
+            # 메타 해시 생성
+            meta = ConnectionMetaDomain(
+                status=status,
+                connection_id=actual_conn_id,
+                created_at=now,
+                last_active=now,
+                scope=scope,
+            )
+            await self._meta.set_initial(meta=meta, ttl=actual_ttl)
+            await self._symbols.replace(list(self.symbols), actual_ttl)
+            logger.info(
+                f"연결 상태 설정: {scope.exchange}/{scope.region}/{scope.request_type}, \n"
+                f"상태={connection_status_format(status)}\t심볼={len(self.symbols)}개\tID={actual_conn_id}"
+            )
+        except Exception as e:
+            await self._emit_error(e)
+            raise
 
-    @redis_exception_wrapped()
     async def update_connection_state(
         self, status: ConnectionStatus, ttl: int | None = None
     ) -> bool:
@@ -244,45 +243,55 @@ class WebsocketConnectionCache:
         - 심볼 키 TTL도 동일하게 맞춤
         Returns: 성공 시 True, 대상 없음 시 False
         """
-        if not await self._meta.exists():
-            logger.warning(
-                f"업데이트할 연결이 없음: {self.exchange}/{self.region}/{self.request_type}"
+        try:
+            if not await self._meta.exists():
+                logger.warning(
+                    f"업데이트할 연결이 없음: {self.exchange}/{self.region}/{self.request_type}"
+                )
+                return False
+            actual_ttl = ttl or redis_settings.DEFAULT_TTL
+            await self._meta.update_status(status, actual_ttl)
+            # 심볼 키도 동일 TTL 유지
+            await self.redis.expire(
+                f"ws:connection:{self.exchange}:{self.region}:{self.request_type}:symbols",
+                actual_ttl,
             )
-            return False
-        actual_ttl = ttl or redis_settings.DEFAULT_TTL
-        await self._meta.update_status(status, actual_ttl)
-        # 심볼 키도 동일 TTL 유지
-        await self.redis.expire(
-            f"ws:connection:{self.exchange}:{self.region}:{self.request_type}:symbols",
-            actual_ttl,
-        )
-        logger.info(
-            f"연결 상태 업데이트: {self.exchange}/{self.region}/{self.request_type}, 상태={connection_status_format(status)}"
-        )
-        return True
+            logger.info(
+                f"연결 상태 업데이트: {self.exchange}/{self.region}/{self.request_type}, 상태={connection_status_format(status)}"
+            )
+            return True
+        except Exception as e:
+            await self._emit_error(e)
+            raise
 
-    @redis_exception_wrapped()
     async def remove_connection(self) -> bool:
         """메타/심볼 키를 모두 삭제합니다.
 
         Returns: 삭제된 키가 하나라도 있으면 True, 없으면 False
         """
-        deleted = await self._meta.delete() + await self._symbols.delete()
-        if deleted > 0:
-            logger.info(
-                f"연결 상태 삭제 성공: {self.exchange}/{self.region}/{self.request_type}"
+        try:
+            deleted = await self._meta.delete() + await self._symbols.delete()
+            if deleted > 0:
+                logger.info(
+                    f"연결 상태 삭제 성공: {self.exchange}/{self.region}/{self.request_type}"
+                )
+                return True
+            logger.warning(
+                f"삭제할 연결 정보 없음: {self.exchange}/{self.region}/{self.request_type}"
             )
-            return True
-        logger.warning(
-            f"삭제할 연결 정보 없음: {self.exchange}/{self.region}/{self.request_type}"
-        )
-        return False
+            return False
+        except Exception as e:
+            await self._emit_error(e)
+            raise
 
-    @redis_exception_wrapped()
     async def replace_symbols(self, symbols: list[str], ttl: int | None = None) -> None:
         """심볼 세트를 완전히 대체하고 TTL을 재설정합니다."""
-        actual_ttl = ttl or redis_settings.DEFAULT_TTL
-        await self._symbols.replace(symbols, actual_ttl)
+        try:
+            actual_ttl = ttl or redis_settings.DEFAULT_TTL
+            await self._symbols.replace(symbols, actual_ttl)
+        except Exception as e:
+            await self._emit_error(e)
+            raise
 
     async def set_connected(self, ttl: int | None = None) -> bool:
         """상태를 CONNECTED로 설정합니다."""
@@ -295,3 +304,19 @@ class WebsocketConnectionCache:
     async def set_disconnected(self, ttl: int | None = None) -> bool:
         """상태를 DISCONNECTED로 설정합니다."""
         return await self.update_connection_state(CONNECTION_STATUS_DISCONNECTED, ttl)
+
+    async def _emit_error(self, err: BaseException) -> None:
+        """Redis 계층 에러를 ws.error로 발행."""
+        target = ConnectionTargetDTO(
+            exchange=self.exchange,
+            region=self.region,
+            request_type=self.request_type,
+        )
+        observed = f"{self.exchange}/{self.region}/{self.request_type}"
+        await make_ws_error_event_from_kind(
+            target=target,
+            err=err,
+            kind="redis",
+            observed_key=observed,
+            raw_context=None,
+        )

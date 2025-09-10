@@ -10,7 +10,6 @@ from core.dto.io.target import ConnectionTargetDTO
 class WsEventErrorTypeDTO(BaseIOModelDTO):
     """에러 타입 DTO (I/O 경계용 Pydantic v2 모델)."""
 
-    error_type: str
     error_message: dict
     error_domain: ErrorDomain
     error_code: ErrorCode
@@ -26,7 +25,7 @@ class WsEventErrorMetaDTO(BaseIOModelDTO):
     schema_version: str
     correlation_id: str | None = None
     observed_key: str | None = None
-    raw_context: dict[str, Any] | None = None
+    raw_context: dict | None = None
 
 
 class WsErrorEventDTO(BaseIOModelDTO):

@@ -5,8 +5,8 @@ from typing import Any, Callable
 
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
+import orjson
 
-from common.exceptions.error_wrappers import kafka_exception_wrapped
 from common.logger import PipelineLogger
 from common.serde import Serializer, to_bytes
 from core.dto.internal.common import ConnectionScopeDomain
@@ -43,7 +43,6 @@ class KafkaProducerClient:
         await action()
         return True
 
-    @kafka_exception_wrapped()
     async def start_producer(self) -> bool:
         """Producer 시작 및 재사용
 
@@ -55,26 +54,18 @@ class KafkaProducerClient:
             # 직렬화 방식만 공용 Serializer로 오버라이드합니다.
             self.producer = create_producer(value_serializer=serializer)
         # 헬퍼 메서드를 통해 시작 시도
-        result: bool = await self._execute_with_logging(
-            action=self.producer.start,
-            failure="Producer 시작 실패",
-        )
+        result: bool = await self._execute_with_logging(action=self.producer.start)
         if result:
             self.producer_started = True
             logger.info("Kafka Producer started")
         return result
 
-    @kafka_exception_wrapped()
     async def stop_producer(self) -> None:
         """Producer 종료"""
         if self.producer_started and self.producer is not None:
-            result: bool = await self._execute_with_logging(
-                action=self.producer.stop,
-                failure="Producer 종료 실패",
-            )
-            if result:
-                self.producer_started = False
-                logger.info("Kafka Producer stopped")
+            await self._execute_with_logging(action=self.producer.stop)
+            self.producer_started = False
+            logger.info("Kafka Producer stopped")
 
     async def produce_sending(
         self, message: Any, topic: str, key: KeyType, retries: int = 3
@@ -84,14 +75,24 @@ class KafkaProducerClient:
         - Pydantic BaseModel 인스턴스가 들어오면 dict로 덤프하여 전송합니다.
         - dict 이외의 타입은 직렬화기가 처리 가능한지에 의존합니다.
         """
-        # Pydantic 모델을 dict로 변환
-        if isinstance(message, BaseModel):
-            message = message.model_dump()
-        await self.start_producer()
-        attempt = 1
-        while attempt <= retries:
-            await self.producer.send_and_wait(topic=topic, value=message, key=key)
-            return True  # 성공 시 즉시 반환
+        try:
+            # Pydantic 모델을 dict로 변환
+            if isinstance(message, BaseModel):
+                message = message.model_dump()
+
+            message_converted: bytes = orjson.dumps(message)
+            await self.start_producer()
+
+            attempt = 1
+            while attempt <= retries:
+                await self.producer.send_and_wait(
+                    topic=topic,
+                    value=message_converted,
+                    key=key,
+                )
+                return True  # 성공 시 즉시 반환
+        finally:
+            await self.stop_producer()
 
 
 class ConnectRequestProducer(KafkaProducerClient):
@@ -106,7 +107,6 @@ class ConnectRequestProducer(KafkaProducerClient):
         super().__init__()
         self.topic = topic
 
-    @kafka_exception_wrapped()
     async def send_event(self, event: ConnectRequestDTO, key: KeyType = None) -> bool:
         return await self.produce_sending(
             message=event,
@@ -124,14 +124,17 @@ class ErrorEventProducer(KafkaProducerClient):
         super().__init__()
         self.topic = topic
 
-    @kafka_exception_wrapped()
     async def send_error_event(
         self, event: WsErrorEventDTO, key: KeyType = None
     ) -> bool:
-        # DTO(WsErrorEvent)는 Pydantic BaseModel이므로 그대로 전달
-        # produce_sending 내부에서 BaseModel이면 dict로 덤프 처리됩니다.
+        """ws.error 이벤트를 orjson으로 직렬화하여 전송합니다.
 
-        return await self.produce_sending(
+        - BaseModel이면 model_dump() 후 orjson.dumps로 bytes 생성
+        - dict/str 등 비-바이너리도 orjson.dumps로 bytes 생성
+        - 이미 bytes면 그대로 전송
+        """
+
+        await self.produce_sending(
             message=event,
             topic=self.topic,
             key=key,
@@ -148,13 +151,12 @@ class DlqProducer(KafkaProducerClient):
         super().__init__()
         self.topic = topic
 
-    @kafka_exception_wrapped()
-    async def send_dlq_event(self, event: DlqEventDTO, key: KeyType = None) -> bool:
+    async def send_dlq_event(self, event: DlqEventDTO, key: KeyType = None) -> None:
         """DTO 기반 DLQ 이벤트 전송.
 
         - Pydantic 모델을 그대로 전달하면 `produce_sending`에서 dict로 직렬화됩니다.
         """
-        return await self.produce_sending(
+        await self.produce_sending(
             message=event,
             topic=self.topic,
             key=key,
@@ -168,7 +170,6 @@ class MetricsProducer(KafkaProducerClient):
         super().__init__()
         self.topic = topic
 
-    @kafka_exception_wrapped()
     async def send_counting_batch(
         self,
         scope: ConnectionScopeDomain,
