@@ -91,18 +91,11 @@ class GenericValidator:
             # 로깅
             logger.warning(f"명령 검증 실패: {reason}")
 
-            # 페이로드가 JSON이 아니면 직렬화
-            payload_str = (
-                orjson.dumps(payload).decode("utf-8")
-                if not isinstance(payload, str)
-                else payload
-            )
-
             # DLQ 이벤트 생성 및 전송
             dlq_event = DlqEventDTO(
                 action="dlq",
                 reason=reason,
-                original_message=payload_str,
+                original_message=payload,
                 target=ConnectionTargetDTO(
                     exchange=self.exchange_name,
                     region="korea",

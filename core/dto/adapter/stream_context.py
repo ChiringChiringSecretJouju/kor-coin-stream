@@ -17,7 +17,7 @@ def to_connection_scope(target: dict[str, str]) -> ConnectionScopeDomain:
     기대 키: "region", "exchange", "request_type"
     """
     return ConnectionScopeDomain(
-        region=cast(Region, "korea"),
+        region="korea",
         exchange=cast(ExchangeName, target["exchange"]),
         request_type=cast(RequestType, target["request_type"]),
     )

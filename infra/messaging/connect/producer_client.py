@@ -5,7 +5,6 @@ from typing import Any, Callable
 
 from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
-import orjson
 
 from common.logger import PipelineLogger
 from common.serde import Serializer, to_bytes
@@ -80,14 +79,13 @@ class KafkaProducerClient:
             if isinstance(message, BaseModel):
                 message = message.model_dump()
 
-            message_converted: bytes = orjson.dumps(message)
             await self.start_producer()
 
             attempt = 1
             while attempt <= retries:
                 await self.producer.send_and_wait(
                     topic=topic,
-                    value=message_converted,
+                    value=message,
                     key=key,
                 )
                 return True  # 성공 시 즉시 반환

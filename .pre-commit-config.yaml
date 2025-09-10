@@ -12,5 +12,6 @@ repos:
             "redis>=6.4.0",
             "kafka-python>=2.2.15",
             "websockets>=15.0.1",
+            "orjson>=3.11.3",
         ]
         args: ["--ignore-missing-source=true"]
