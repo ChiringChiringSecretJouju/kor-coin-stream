@@ -17,6 +17,15 @@ from exchange.korea import (
     KorbitWebsocketHandler,
     UpbitWebsocketHandler,
 )
+from exchange.europe import BitfinexWebsocketHandler
+from exchange.na import KrakenWebsocketHandler, CoinbaseWebsocketHandler
+from exchange.asia import (
+    BinanceWebsocketHandler,
+    BybitWebsocketHandler,
+    OKXWebsocketHandler,
+    HuobiWebsocketHandler,
+    GateioWebsocketHandler,
+)
 from infra.cache.cache_store import WebsocketConnectionCache
 
 
@@ -27,14 +36,34 @@ ExchangeSocketHandler: TypeAlias = (
     | BithumbWebsocketHandler
     | CoinoneWebsocketHandler
     | KorbitWebsocketHandler
+    | BinanceWebsocketHandler
+    | BybitWebsocketHandler
+    | OKXWebsocketHandler
+    | HuobiWebsocketHandler
+    | GateioWebsocketHandler
+    | BitfinexWebsocketHandler
+    | CoinbaseWebsocketHandler
+    | KrakenWebsocketHandler
 )
 
 # 거래소별 웹소켓 핸들러 매핑
 HANDLER_MAP: Final[dict[str, type[ExchangeSocketHandler]]] = {
+    # 한국 거래소
     "upbit": UpbitWebsocketHandler,
     "bithumb": BithumbWebsocketHandler,
     "coinone": CoinoneWebsocketHandler,
     "korbit": KorbitWebsocketHandler,
+    # 아시아 거래소
+    "binance": BinanceWebsocketHandler,
+    "bybit": BybitWebsocketHandler,
+    "okx": OKXWebsocketHandler,
+    "huobi": HuobiWebsocketHandler,
+    "gateio": GateioWebsocketHandler,
+    # 유럽 거래소
+    "bitfinex": BitfinexWebsocketHandler,
+    # 북미 거래소
+    "coinbase": CoinbaseWebsocketHandler,
+    "kraken": KrakenWebsocketHandler,
 }
 
 

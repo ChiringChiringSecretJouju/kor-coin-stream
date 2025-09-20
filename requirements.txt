@@ -18,3 +18,4 @@ cachetools
 pydantic-settings
 pytest
 pytest-asyncio
+aiokafka[gssapi]

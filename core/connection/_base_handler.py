@@ -245,6 +245,91 @@ class _BaseWebsocketHandler(ABC):
                 await self._health_monitor.stop_monitoring()
 
 
+class BaseGlobalWebsocketHandler(_BaseWebsocketHandler):
+    """글로벌 거래소 웹소켓 핸들러"""
+
+    def __init__(self, exchange_name: str, region: str, request_type: str) -> None:
+        super().__init__(
+            exchange_name=exchange_name,
+            region=region,
+            request_type=request_type,
+        )
+        # 글로벌 거래소 기본 설정
+        self.ping_interval = websocket_settings.HEARTBEAT_INTERVAL
+        self.projection: list[str] | None = None  # 필드 필터링용
+
+    def _extract_symbol(self, message: dict[str, Any]) -> str | None:
+        """심볼 추출 (위임)"""
+        return _extract_symbol_impl(message)
+
+    def _parse_message(self, message: str | bytes) -> dict[str, Any]:
+        """메시지 파싱 공통 로직"""
+        if isinstance(message, bytes):
+            message = json.loads(message.decode("utf-8"))
+        if isinstance(message, str):
+            message = json.loads(message)
+
+        return message
+
+    async def ticker_message(self, message: Any) -> TickerResponseData | None:
+        """티커 메시지 처리 함수"""
+        parsed_message = self._parse_message(message)
+
+        # 글로벌 거래소 공통 응답 처리
+        if parsed_message.get("result") is not None:
+            # Binance, OKX 등의 result 기반 응답
+            if parsed_message.get("result") == "success":
+                self._log_status("subscribed")
+                return None
+
+        if parsed_message.get("event") == "subscribe":
+            # Bybit, Gate.io 등의 event 기반 응답
+            self._log_status("subscribed")
+            return None
+
+        # data 필드가 있으면 병합
+        data_sub: dict | None = parsed_message.get("data", None)
+        if isinstance(data_sub, dict):
+            parsed_message: dict = update_dict(parsed_message, "data")
+
+        # projection이 지정되면 해당 필드만 추출
+        fields: list[str] | None = self.projection
+        if fields:
+            return {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
+        return parsed_message
+
+    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
+        """오더북 메시지 처리 함수"""
+        parsed_message = self._parse_message(message)
+        return parsed_message
+
+    async def trade_message(self, message: Any) -> TradeResponseData | None:
+        """체결 메시지 처리 함수"""
+        parsed_message = self._parse_message(message)
+        return parsed_message
+
+    async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
+        """메시지 수신 및 처리 루프"""
+        while True:
+            message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+            self._last_receive_ts = time.monotonic()
+            parsed_message = self._parse_message(message)
+
+            # 심볼 추출 후 분 집계 카운트 증가
+            symbol = self._extract_symbol(parsed_message)
+            self._minute_batch_counter.inc(symbol=symbol)
+
+            # 메시지 타입별 핸들러 호출
+            handler_map: MessageHandler = {
+                "ticker": self.ticker_message,
+                "orderbook": self.orderbook_message,
+                "trade": self.trade_message,
+            }
+            fn = handler_map.get(self.scope.request_type)
+            if fn:
+                await fn(parsed_message)
+
+
 class BaseKoreaWebsocketHandler(_BaseWebsocketHandler):
     """한국 거래소 웹소켓 핸들러"""
 

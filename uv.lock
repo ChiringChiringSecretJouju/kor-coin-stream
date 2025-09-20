@@ -64,6 +64,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/97/e2513a0c10585e51d4d9b42c9dd5f5ab15dfe150620a4893a2c6c20f0f4a/aiokafka-0.12.0-cp312-cp312-win_amd64.whl", hash = "sha256:fdbd69ec70eea4a8dfaa5c35ff4852e90e1277fcc426b9380f0b499b77f13b16", size = 366068, upload-time = "2024-10-26T20:52:49.132Z" },
 ]
 
+[package.optional-dependencies]
+gssapi = [
+    { name = "gssapi" },
+]
+
 [[package]]
 name = "aiosignal"
 version = "1.4.0"
@@ -191,6 +196,15 @@ wheels = [
 ]
 
 [[package]]
+name = "decorator"
+version = "5.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/fa/6d96a0978d19e17b68d634497769987b16c8f4cd0a7a05048bec693caa6b/decorator-5.2.1.tar.gz", hash = "sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360", size = 56711, upload-time = "2025-02-24T04:41:34.073Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/8c/f3147f5c4b73e7550fe5f9352eaa956ae838d5c51eb58e7a25b9f3e2643b/decorator-5.2.1-py3-none-any.whl", hash = "sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a", size = 9190, upload-time = "2025-02-24T04:41:32.565Z" },
+]
+
+[[package]]
 name = "frozenlist"
 version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -256,6 +270,21 @@ wheels = [
 ]
 
 [[package]]
+name = "gssapi"
+version = "1.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "decorator" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/c8/90912e90208bd20ed9384f299384cc9ee8f354758bd8650155eba33d4655/gssapi-1.10.0.tar.gz", hash = "sha256:f1495e0dc20bee3ad2839724d98ae723c7dae78c1ddea37a7c861c3c4bd77763", size = 94201, upload-time = "2025-09-01T18:32:05.681Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/12/892d4a1147ec05a22de1e7b1300afe0a7dfeed01194b61c84db8eea4aa6b/gssapi-1.10.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:ee8c4c657748d52c6b27a24b27f4b481d04ed3e5971f5f12d1ea39354448a8f0", size = 672819, upload-time = "2025-09-01T18:31:43.011Z" },
+    { url = "https://files.pythonhosted.org/packages/95/75/ace7a08fa9078ab6439e9d1e6ced60641d5cc2e62a9023f162cb87b92ce6/gssapi-1.10.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:90b5391c81516e6267518c10f85e9ac9a87ef01d0ed95017f616b1ba857c51ec", size = 696408, upload-time = "2025-09-01T18:31:44.676Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/e4/522c1ddeaabee60a6bcc89568b7c6c57b7cbd9d11fc97fc518ac756928a9/gssapi-1.10.0-cp312-cp312-win32.whl", hash = "sha256:9b3b29ccac8c9ebf0bfd92c5da761dce6f2016d99bd3e06a68c3e6b2e292bbc2", size = 732056, upload-time = "2025-09-01T18:31:46.151Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/73/32bed23fe808d5cd3707a5fe9e612a171b97351ea0f2c34593ed204b6272/gssapi-1.10.0-cp312-cp312-win_amd64.whl", hash = "sha256:30033d9cfd6cfbe8cf69cd9947ebcdfc11cda65586cafaa197bfe522d19c286f", size = 826932, upload-time = "2025-09-01T18:31:47.478Z" },
+]
+
+[[package]]
 name = "idna"
 version = "3.10"
 source = { registry = "https://pypi.org/simple" }
@@ -297,7 +326,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "aiokafka" },
+    { name = "aiokafka", extra = ["gssapi"] },
     { name = "cachetools" },
     { name = "cctx" },
     { name = "confluent-kafka" },
@@ -325,7 +354,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.15" },
-    { name = "aiokafka", specifier = ">=0.12.0" },
+    { name = "aiokafka", extras = ["gssapi"], specifier = ">=0.12.0" },
     { name = "cachetools", specifier = ">=6.2.0" },
     { name = "cctx", specifier = ">=1.0.0" },
     { name = "confluent-kafka", specifier = ">=2.11.1" },

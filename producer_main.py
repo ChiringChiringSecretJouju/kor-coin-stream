@@ -71,6 +71,8 @@ async def run() -> None:
     producer = ConnectRequestProducer(
         topic="ws.command"
     )  # override topic to existing one
+
+    print(payload)
     try:
         ok = await producer.send_event(payload, key=key)
         print("published" if ok else "failed")
