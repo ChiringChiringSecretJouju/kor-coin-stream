@@ -4,11 +4,11 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from aiokafka import AIOKafkaProducer
 from pydantic import BaseModel
 
 from common.logger import PipelineLogger
-from common.serde import Serializer, to_bytes
+
+# from common.serde import Serializer, to_bytes  # confluent-kafka로 교체됨
 from core.dto.internal.common import ConnectionScopeDomain
 from core.dto.internal.metrics import MinuteItemDomain
 from core.dto.io.commands import ConnectRequestDTO
@@ -23,7 +23,7 @@ from infra.messaging.clients.clients import create_producer
 
 
 logger = PipelineLogger(__name__)
-serializer: Serializer = lambda value: to_bytes(value)
+# serializer: Serializer = lambda value: to_bytes(value)  # confluent-kafka로 교체됨
 KeyType = str | bytes | None
 
 
@@ -34,7 +34,7 @@ class KafkaProducerClient:
     - 카프카 전송 전용 클라이언트
     """
 
-    producer: AIOKafkaProducer | None = None
+    producer: Any | None = None  # AsyncProducerWrapper
     producer_started: bool = False
 
     # 실행할 비동기 함수, 예: self.producer.start 또는 self.producer.stop
@@ -64,9 +64,9 @@ class KafkaProducerClient:
 
         # 프로듀서 미생성 시 생성
         if self.producer is None:
-            # 기본 설정은 messaging.clients.clients 상수를 사용하며,
-            # 직렬화 방식만 공용 Serializer로 오버라이드합니다.
-            self.producer = create_producer(value_serializer=serializer)
+            # confluent-kafka 기반 AsyncProducerWrapper 생성
+            # 직렬화는 내부적으로 default_value_serializer 사용
+            self.producer = create_producer()
 
         # 헬퍼 메서드를 통해 시작 시도
         result: bool = await self._execute_with_logging(action=self.producer.start)

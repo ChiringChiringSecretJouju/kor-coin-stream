@@ -1,0 +1,116 @@
+{
+  "type": "record",
+  "name": "ErrorEvent",
+  "namespace": "com.chiringchiring.events",
+  "doc": "시스템 에러 이벤트 스키마",
+  "fields": [
+    {
+      "name": "action",
+      "type": "string",
+      "doc": "액션 타입 (error)"
+    },
+    {
+      "name": "error_timestamp_utc",
+      "type": "string",
+      "doc": "에러 발생 시간 (ISO 8601 UTC 형식)"
+    },
+    {
+      "name": "target",
+      "type": {
+        "type": "record",
+        "name": "ErrorTarget",
+        "doc": "에러 발생 대상",
+        "fields": [
+          {
+            "name": "exchange",
+            "type": "string",
+            "doc": "거래소명"
+          },
+          {
+            "name": "region",
+            "type": "string",
+            "doc": "지역"
+          },
+          {
+            "name": "request_type",
+            "type": "string",
+            "doc": "요청 타입"
+          }
+        ]
+      }
+    },
+    {
+      "name": "meta",
+      "type": {
+        "type": "record",
+        "name": "ErrorMeta",
+        "doc": "에러 메타데이터",
+        "fields": [
+          {
+            "name": "schema_version",
+            "type": "string",
+            "doc": "스키마 버전"
+          },
+          {
+            "name": "correlation_id",
+            "type": "string",
+            "doc": "상관관계 ID"
+          },
+          {
+            "name": "observed_key",
+            "type": "string",
+            "doc": "관찰된 키 (url:wss://...:attempt:0 형식)"
+          },
+          {
+            "name": "raw_context",
+            "type": {
+              "type": "map",
+              "values": "string"
+            },
+            "doc": "원본 컨텍스트 (url, attempt, backoff 등)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "error",
+      "type": {
+        "type": "record",
+        "name": "ErrorDetail",
+        "doc": "에러 상세 정보",
+        "fields": [
+          {
+            "name": "error_message",
+            "type": {
+              "type": "record",
+              "name": "ErrorMessage",
+              "doc": "에러 메시지 정보",
+              "fields": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "doc": "간단한 에러 메시지"
+                },
+                {
+                  "name": "detail_error",
+                  "type": "string",
+                  "doc": "상세 에러 정보 (스택 트레이스 포함)"
+                }
+              ]
+            }
+          },
+          {
+            "name": "error_domain",
+            "type": "string",
+            "doc": "에러 도메인 (unknown, connection, validation 등)"
+          },
+          {
+            "name": "error_code",
+            "type": "string",
+            "doc": "에러 코드 (unknown_error, timeout_error 등)"
+          }
+        ]
+      }
+    }
+  ]
+}

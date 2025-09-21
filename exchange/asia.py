@@ -1,5 +1,8 @@
 from core.connection._base_handler import BaseGlobalWebsocketHandler
-from typing import Any
+from core.types import TickerResponseData
+from typing import Any, override
+import gzip
+import orjson
 
 
 class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
@@ -10,14 +13,6 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
         # Binance는 일반적으로 ping/pong 프레임 사용
         self.set_heartbeat(kind="frame")
 
-    async def prepare_subscription_message(
-        self, params: dict[str, Any] | list[Any]
-    ) -> str:
-        """Binance 구독 메시지 형식으로 변환"""
-        # Binance WebSocket API 형식에 맞게 구독 메시지 생성
-        # 예: {"method": "SUBSCRIBE", "params": ["btcusdt@ticker"], "id": 1}
-        return await super()._sending_socket_parameter(params)
-
 
 class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
     """바이비트 거래소 웹소켓 핸들러"""
@@ -26,14 +21,6 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
         super().__init__(*args, **kwargs)
         # Bybit은 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message='{"op":"ping"}')
-
-    async def prepare_subscription_message(
-        self, params: dict[str, Any] | list[Any]
-    ) -> str:
-        """Bybit 구독 메시지 형식으로 변환"""
-        # Bybit WebSocket API 형식에 맞게 구독 메시지 생성
-        # 예: {"op": "subscribe", "args": ["orderbook.1.BTCUSDT"]}
-        return await super()._sending_socket_parameter(params)
 
 
 class GateioWebsocketHandler(BaseGlobalWebsocketHandler):
@@ -44,14 +31,6 @@ class GateioWebsocketHandler(BaseGlobalWebsocketHandler):
         # Gate.io는 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message='{"method": "ping"}')
 
-    async def prepare_subscription_message(
-        self, params: dict[str, Any] | list[Any]
-    ) -> str:
-        """Gate.io 구독 메시지 형식으로 변환"""
-        # Gate.io WebSocket API 형식에 맞게 구독 메시지 생성
-        # 예: {"method": "ticker.subscribe", "params": ["BTC_USDT"], "id": 1}
-        return await super()._sending_socket_parameter(params)
-
 
 class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
     """후오비(HTX) 거래소 웹소켓 핸들러"""
@@ -61,13 +40,42 @@ class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
         # Huobi는 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message='{"ping": 1}')
 
-    async def prepare_subscription_message(
-        self, params: dict[str, Any] | list[Any]
-    ) -> str:
-        """Huobi 구독 메시지 형식으로 변환"""
-        # Huobi WebSocket API 형식에 맞게 구독 메시지 생성
-        # 예: {"sub": "market.btcusdt.ticker", "id": "id1"}
-        return await super()._sending_socket_parameter(params)
+    @override
+    def _parse_message(self, message: str | bytes) -> dict[str, Any]:
+        """Huobi 메시지 파싱 - GZIP 압축 해제 포함"""
+        try:
+            # bytes인 경우 GZIP 압축 해제 시도
+            if isinstance(message, bytes):
+                # GZIP 매직 넘버 확인 (0x1f, 0x8b)
+                if len(message) >= 2 and message[0] == 0x1F and message[1] == 0x8B:
+                    # GZIP 압축된 데이터 해제
+                    decompressed = gzip.decompress(message)
+                    message = decompressed.decode("utf-8")
+                else:
+                    # 일반 bytes 데이터
+                    message = message.decode("utf-8")
+
+            # JSON 파싱
+            if isinstance(message, str):
+                return orjson.loads(message)
+
+            return message
+        except (gzip.BadGzipFile, UnicodeDecodeError, orjson.JSONDecodeError) as e:
+            # 압축 해제 또는 파싱 실패 시 원본 메시지 반환
+            self._log_status(f"message_parse_error: {e}")
+            return {"error": f"Failed to parse message: {e}", "raw": str(message)}
+
+    @override
+    async def ticker_message(self, message: Any) -> TickerResponseData | None:
+        parsed_message = self._parse_message(message)
+
+        if "ping" in parsed_message:
+            ping_value = parsed_message["ping"]
+            pong_response = orjson.dumps({"pong": ping_value}).decode("utf-8")
+            await self._current_websocket.send(pong_response)
+            return None  # 출력하지 않음
+
+        return await super().ticker_message(message)
 
 
 class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
@@ -77,11 +85,3 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
         super().__init__(*args, **kwargs)
         # OKX는 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message="ping")
-
-    async def prepare_subscription_message(
-        self, params: dict[str, Any] | list[Any]
-    ) -> str:
-        """OKX 구독 메시지 형식으로 변환"""
-        # OKX WebSocket API 형식에 맞게 구독 메시지 생성
-        # 예: {"op": "subscribe", "args": [{"channel": "tickers", "instId": "BTC-USDT"}]}
-        return await super()._sending_socket_parameter(params)

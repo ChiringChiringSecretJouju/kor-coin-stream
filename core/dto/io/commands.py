@@ -40,3 +40,16 @@ class CommandDTO(BaseIOModelDTO):
     ts_ingest: int | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+
+class DisconnectCommandDTO(BaseIOModelDTO):
+    """연결 해제 명령 이벤트 스키마."""
+
+    type: str
+    action: str
+    target: dict[str, str]
+    reason: str | None = None
+    correlation_id: str | None = None
+    meta: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="forbid")

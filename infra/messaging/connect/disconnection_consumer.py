@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Any, Final, cast
+
+
+from application.orchestrator import StreamOrchestrator
+from common.logger import PipelineLogger
+from core.dto.io.commands import DisconnectCommandDTO
+from core.dto.io.target import ConnectionTargetDTO
+from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
+from core.types import ExchangeName, PayloadAction, PayloadType, Region, RequestType
+from infra.messaging.clients.clients import create_consumer
+from infra.messaging.connect.services.command_validator import GenericValidator
+
+
+logger: Final = PipelineLogger.get_logger("consumer", "disconnect")
+
+
+class KafkaDisconnectionConsumerClient:
+    """ws.disconnection 토픽을 소비하여 연결 종료를 지시하는 컨슈머."""
+
+    def __init__(self, orchestrator: StreamOrchestrator, topic: str) -> None:
+        self.orchestrator = orchestrator
+        self.topic = topic
+        self.consumer: Any | None = None  # AsyncConsumerWrapper
+
+    async def _start_consumer(self) -> None:
+        self.consumer = create_consumer(self.topic)
+        await self.consumer.start()
+        logger.info(f"Kafka disconnect 소비 시작 - topic: {self.topic}")
+
+    async def _stop_consumer(self) -> None:
+        if self.consumer is not None:
+            await self.consumer.stop()
+            logger.info("Kafka disconnect 소비 종료")
+
+    def _should_process(self, payload: dict[str, Any]) -> bool:
+        match (payload.get("type"), payload.get("action")):
+            case (PayloadType.STATUS, PayloadAction.DISCONNECT):
+                return True
+            case (PayloadType.STATUS, _):
+                logger.debug("disconnect 컨슈머 무시: action!=disconnect")
+                return False
+            case (type_value, _):
+                logger.debug(
+                    f"disconnect 컨슈머 무시: type!={PayloadType.STATUS}, 받음: {type_value}"
+                )
+                return False
+
+    async def _consume_stream(self) -> None:
+        async for record in self.consumer:
+            payload: dict = record.value()
+            exchange = payload.get("target", {}).get("exchange", "")
+            region = payload.get("target", {}).get("region", "")
+            request_type = payload.get("target", {}).get("request_type", "")
+
+            try:
+                if not self._should_process(payload):
+                    continue
+
+                if not (exchange and region and request_type):
+                    logger.warning(
+                        "disconnect 이벤트에 target 필드가 부족하여 무시합니다: %s",
+                        payload,
+                    )
+                    continue
+
+                validator = GenericValidator(
+                    exchange_name=exchange,
+                    request_type=request_type,
+                )
+                dto = await validator.validate_dto(
+                    payload=payload,
+                    dto_class=DisconnectCommandDTO,
+                    key=record.key(),
+                )
+                if dto is None:
+                    continue
+
+                target = ConnectionTargetDTO(
+                    exchange=cast(ExchangeName, dto.target["exchange"]),
+                    region=cast(Region, dto.target["region"]),
+                    request_type=cast(RequestType, dto.target["request_type"]),
+                )
+
+                disconnected = await self.orchestrator.disconnect(
+                    target=target,
+                    reason=dto.reason,
+                )
+
+                if not disconnected:
+                    logger.info(
+                        f"disconnect 요청 처리: 활성 연결 없음 - {exchange}/{region}/{request_type}"
+                    )
+            except Exception as exc:
+                logger.error(f"disconnect 이벤트 처리 실패: {exc}")
+                try:
+                    target = ConnectionTargetDTO(
+                        exchange=cast(ExchangeName, exchange),
+                        region=cast(Region, region),
+                        request_type=cast(RequestType, request_type),
+                    )
+                except Exception:
+                    continue
+
+                observed_key = f"{exchange}/{region}/{request_type}|disconnect"
+                await make_ws_error_event_from_kind(
+                    target=target,
+                    err=exc,
+                    kind="ws",
+                    observed_key=observed_key,
+                    raw_context=payload,
+                )
+
+    async def run(self) -> None:
+        while True:
+            try:
+                await self._start_consumer()
+                await self._consume_stream()
+            except asyncio.CancelledError:
+                logger.info("disconnect 컨슈머 작업 취소 요청 처리: 종료합니다.")
+                break
+            finally:
+                await self._stop_consumer()

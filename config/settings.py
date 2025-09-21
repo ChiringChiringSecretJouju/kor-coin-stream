@@ -22,6 +22,7 @@ class KafkaSettings(BaseSettings):
     CONSUMER_GROUP_ID: str = "korea-coin-stream"
     COMMAND_TOPIC: str = "ws.command"
     STATUS_TOPIC: str = "ws.status"
+    DISCONNECTION_TOPIC: str = "ws.disconnection"
     EVENT_TOPIC: str = "ws.event"
     AUTO_OFFSET_RESET: str = "latest"
     ACKS: str | int = "all"
@@ -74,6 +75,7 @@ class WebsocketSettings(BaseSettings):
     HEARTBEAT_TIMEOUT: int = 10  # frame pong 대기 타임아웃(초)
     HEARTBEAT_FAIL_LIMIT: int = 3  # 하트비트 연속 실패 허용 횟수
     RECEIVE_IDLE_TIMEOUT: int = 120  # 수신 정지 워치독 타임아웃(초)
+    RECONNECT_MAX_ATTEMPTS: int = 4  # 연속 재접속 시도 허용 횟수
 
     model_config = env_settings("WS_")
 

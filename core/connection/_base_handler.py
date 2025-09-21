@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import random
 import time
@@ -77,6 +78,11 @@ class _BaseWebsocketHandler(ABC):
         self._error_handler = ConnectionErrorHandler(self.scope)
         # 롱-리빙 메트릭 프로듀서
         self._metrics_producer = MetricsProducer()
+
+        # 실행 제어 플래그 및 재시도 정책
+        self._stop_requested: bool = False
+        self._max_reconnect_attempts: int = websocket_settings.RECONNECT_MAX_ATTEMPTS
+        self._backoff_task: asyncio.Task[None] | None = None
 
         # emit_factory는 인스턴스 컨텍스트(self.scope, self._metrics_producer)를 캡처한 비동기 함수여야 합니다.
         async def _emit_factory(
@@ -172,6 +178,38 @@ class _BaseWebsocketHandler(ABC):
             # 종료 경로에서 남아있을 수 있는 producer를 반드시 정리
             await self._metrics_producer.stop_producer()
 
+    @property
+    def stop_requested(self) -> bool:
+        """외부에서 종료 요청 여부를 확인하기 위한 플래그."""
+        return self._stop_requested
+
+    async def request_disconnect(self, reason: str | None = None) -> None:
+        """외부 신호에 의해 웹소켓 연결을 중단합니다."""
+
+        if self._stop_requested:
+            return
+
+        self._stop_requested = True
+        reason_suffix = f" (reason: {reason})" if reason else ""
+        logger.info(f"{self.scope.exchange}: disconnect requested{reason_suffix}")
+
+        if self._backoff_task and not self._backoff_task.done():
+            self._backoff_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._backoff_task
+            self._backoff_task = None
+
+        websocket = self._current_websocket
+        if websocket is not None:
+            try:
+                await websocket.close()
+            except Exception as close_error:
+                logger.warning(
+                    f"{self.scope.exchange}: websocket close failed during disconnect - {close_error}"
+                )
+
+        await self._health_monitor.stop_monitoring()
+
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
         """웹소켓에 연결하고 구독/수신 루프를 실행합니다. 끊김 시 재접속을 수행합니다."""
         socket_parameters: dict | list = parameter_info
@@ -182,14 +220,19 @@ class _BaseWebsocketHandler(ABC):
             return
 
         attempt = 0
-        while True:
+        while not self._stop_requested:
             self._log_status("connecting")
             logger.info(f"{self.scope.exchange}: 연결 시도 중... {url}")
             try:
                 async with websockets.connect(uri=url, ping_interval=None) as websocket:
+                    if self._stop_requested:
+                        await websocket.close()
+                        break
+
                     logger.info(f"{self.scope.exchange}: 연결 성공")
                     self._log_status("connected")
                     attempt = 0  # 성공적으로 연결되었으므로 백오프 시도횟수 리셋
+                    self._stop_requested = False
 
                     # 현재 연결 보관 및 구독 매니저에 파라미터 등록
                     self._current_websocket = websocket
@@ -212,37 +255,68 @@ class _BaseWebsocketHandler(ABC):
                     )
                     await self._handle_message_loop(websocket, timeout)
 
-                    # 정상 종료라면 루프 종료
-                    self._log_status("stopped")
-                    self._current_websocket = None
-
-                    # 종료 전 잔여 메트릭을 동기 플러시 후 프로듀서 정리
-                    await self._batch_flush()
-                    return
+                    # 정상 종료 혹은 외부 요청에 의한 종료
+                    break
             except asyncio.CancelledError:
                 logger.info(f"{self.scope.exchange}: 연결 작업이 취소되었습니다.")
                 self._log_status("cancelled")
-                await self._batch_flush()
+                raise
             except SOCKET_EXCEPTIONS as e:
+                if self._stop_requested:
+                    logger.info(
+                        f"{self.scope.exchange}: disconnect flow stopped reconnection (reason: {e})"
+                    )
+                    break
+
                 self._log_status("disconnected")
                 logger.warning(
                     f"{self.scope.exchange}: 연결이 끊겼습니다. 재시도합니다. 이유: {e}"
                 )
+                attempt += 1
+                backoff_delay = self._next_backoff(attempt - 1)
                 # ws 경계 예외를 에러 토픽으로 발행
                 await self._error_handler.emit_connection_error(
                     e,
                     url=url,
                     attempt=attempt,
-                    backoff=self._next_backoff(attempt),
+                    backoff=backoff_delay,
                 )
-                # 백오프 후 재접속
-                delay = self._next_backoff(attempt)
-                attempt += 1
-                logger.info(f"{self.scope.exchange}: {delay:.2f}s 후 재접속 시도")
-                await asyncio.sleep(delay)
+                if attempt >= self._max_reconnect_attempts:
+                    logger.error(
+                        f"{self.scope.exchange}: 재연결 시도 한도({self._max_reconnect_attempts}) 초과로 종료"
+                    )
+                    await self._error_handler.emit_ws_error(
+                        RuntimeError("max reconnect attempts exceeded"),
+                        observed_key=f"url:{url}:retry_limit",
+                        raw_context={
+                            "attempt": attempt,
+                            "max_reconnect_attempts": self._max_reconnect_attempts,
+                            "url": url,
+                        },
+                    )
+                    self._stop_requested = True
+                    break
+
+                logger.info(
+                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 시도 (attempt={attempt})"
+                )
+                self._backoff_task = asyncio.create_task(asyncio.sleep(backoff_delay))
+                try:
+                    await self._backoff_task
+                except asyncio.CancelledError:
+                    logger.info(f"{self.scope.exchange}: 재접속 대기 중단")
+                    if self._stop_requested:
+                        break
+                    raise
+                finally:
+                    self._backoff_task = None
             finally:
+                self._current_websocket = None
                 await self._batch_flush()
                 await self._health_monitor.stop_monitoring()
+
+        self._log_status("stopped")
+        self._stop_requested = True
 
 
 class BaseGlobalWebsocketHandler(_BaseWebsocketHandler):
@@ -274,15 +348,16 @@ class BaseGlobalWebsocketHandler(_BaseWebsocketHandler):
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
         """티커 메시지 처리 함수"""
         parsed_message = self._parse_message(message)
-
+        print("ㅁㄴㅇㄹㅁㄴㅇㄹㅁㄴㅇㄹㅁㄴㅇㄹ", parsed_message)
         # 글로벌 거래소 공통 응답 처리
+
         if parsed_message.get("result") is not None:
             # Binance, OKX 등의 result 기반 응답
             if parsed_message.get("result") == "success":
                 self._log_status("subscribed")
                 return None
 
-        if parsed_message.get("event") == "subscribe":
+        if parsed_message.get("event") == "subscribe" or "subscribed":
             # Bybit, Gate.io 등의 event 기반 응답
             self._log_status("subscribed")
             return None
@@ -310,7 +385,7 @@ class BaseGlobalWebsocketHandler(_BaseWebsocketHandler):
 
     async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
         """메시지 수신 및 처리 루프"""
-        while True:
+        while not self.stop_requested:
             message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
             self._last_receive_ts = time.monotonic()
             parsed_message = self._parse_message(message)
@@ -328,6 +403,10 @@ class BaseGlobalWebsocketHandler(_BaseWebsocketHandler):
             fn = handler_map.get(self.scope.request_type)
             if fn:
                 await fn(parsed_message)
+
+        logger.info(
+            f"{self.scope.exchange}: message loop stopped ({self.scope.request_type})"
+        )
 
 
 class BaseKoreaWebsocketHandler(_BaseWebsocketHandler):
@@ -390,7 +469,7 @@ class BaseKoreaWebsocketHandler(_BaseWebsocketHandler):
 
     async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
         """메시지 수신 및 처리 루프"""
-        while True:
+        while not self.stop_requested:
             message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
             self._last_receive_ts = time.monotonic()
             parsed_message = self._parse_message(message)
@@ -408,3 +487,7 @@ class BaseKoreaWebsocketHandler(_BaseWebsocketHandler):
             fn = handler_map.get(self.scope.request_type)
             if fn:
                 await fn(parsed_message)
+
+        logger.info(
+            f"{self.scope.exchange}: message loop stopped ({self.scope.request_type})"
+        )

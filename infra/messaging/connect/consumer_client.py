@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import random
 import asyncio
+from dataclasses import dataclass, field
 from typing import Any, Final, cast
 
-from aiokafka import AIOKafkaConsumer
 
 from application.orchestrator import StreamOrchestrator
 from common.logger import PipelineLogger
@@ -20,6 +21,7 @@ from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 logger: Final = PipelineLogger.get_logger("consumer", "app")
 
 
+@dataclass(slots=True)
 class KafkaConsumerClient:
     """
     connect_and_subscribe 명령을 처리하는 Kafka 컨슈머.
@@ -29,17 +31,11 @@ class KafkaConsumerClient:
     - 오케스트레이터에 작업 위임
     """
 
-    def __init__(self, orchestrator: StreamOrchestrator, topic: str) -> None:
-        """
-        Args:
-            orchestrator (StreamOrchestrator): 오케스트레이터
-            topic (str): 소비할 토픽
-        """
-        self.orchestrator = orchestrator
-        self.topic = topic
-        self.consumer: AIOKafkaConsumer | None = None
-        self._tasks: set[asyncio.Task[None]] = set()
-        self._cache_coord = CacheCoordinator()
+    orchestrator: StreamOrchestrator
+    topic: str
+    consumer: Any | None = None  # AsyncConsumerWrapper
+    _tasks: set[asyncio.Task[None]] = field(default_factory=set)
+    _cache_coord: CacheCoordinator = field(default_factory=CacheCoordinator)
 
     async def _start_consumer(self) -> None:
         self.consumer = create_consumer(self.topic)
@@ -79,7 +75,7 @@ class KafkaConsumerClient:
     async def _consume_stream(self) -> None:
         """컨슈머 스트림을 순회하며 레코드를 처리."""
         async for record in self.consumer:
-            payload: dict = record.value
+            payload: dict = record.value()
             exchange: str = payload["target"]["exchange"]
             region: str = payload["target"]["region"]
             request_type: str = payload["target"]["request_type"]
@@ -95,7 +91,7 @@ class KafkaConsumerClient:
                     request_type=request_type,
                 )
                 validated_dto = await _validated.validate_dto(
-                    key=record.key,
+                    key=record.key(),
                     payload=payload,
                     dto_class=CommandDTO,
                 )
@@ -142,17 +138,17 @@ class KafkaConsumerClient:
             except asyncio.CancelledError:
                 logger.info("Kafka 컨슈머 작업 취소 요청 처리: 종료합니다.")
                 break
-            # except Exception as e:
-            #     print()
-            #     attempt += 1
-            #     # 2^attempt 기반, 상한 및 지터 적용
-            #     backoff = min(max_sleep, 2 ** min(attempt, 5))
-            #     sleep_s = backoff + random.uniform(0, 1)
-            #     logger.warning(
-            #         f"Kafka 컨슈머 오류 발생, {sleep_s:.1f}s 후 재시도 (시도 {attempt}): {e}"
-            #     )
-            #     await self._stop_consumer()
-            #     await asyncio.sleep(sleep_s)
-            #     continue
+            except Exception as e:
+                print()
+                attempt += 1
+                # 2^attempt 기반, 상한 및 지터 적용
+                backoff = min(max_sleep, 2 ** min(attempt, 5))
+                sleep_s = backoff + random.uniform(0, 1)
+                logger.warning(
+                    f"Kafka 컨슈머 오류 발생, {sleep_s:.1f}s 후 재시도 (시도 {attempt}): {e}"
+                )
+                await self._stop_consumer()
+                await asyncio.sleep(sleep_s)
+                continue
             finally:
                 await self._stop_consumer()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import datetime
 from typing import Final, TypeAlias
 
@@ -514,6 +515,11 @@ class StreamOrchestrator:
             await self._cache.on_start_with(ctx, cache)
             # 웹소켓 실행 (끊길 때까지 블로킹)
             await self._connector.run_with(ctx, handler)
+        except asyncio.CancelledError:
+            logger.info(
+                f"연결 취소 처리: {_log_string(ctx.scope)} (disconnect requested)"
+            )
+            raise
         except Exception as e:
             # 런타임 예외를 에러 이벤트로 발행
             logger.error(f"연결 실행 중 오류: {_log_string(ctx.scope)} - {e}")
@@ -529,3 +535,40 @@ class StreamOrchestrator:
             # 태스크/핸들러 레지스트리 정리
             self._tasks.pop(key, None)
             self._handlers.pop(key, None)
+
+    async def disconnect(
+        self,
+        target: ConnectionTargetDTO,
+        *,
+        reason: str | None = None,
+    ) -> bool:
+        """외부 이벤트로 요청된 연결 종료를 처리합니다."""
+
+        scope = ConnectionScopeDomain(
+            exchange=target.exchange,
+            region=target.region,
+            request_type=target.request_type,
+        )
+        key = self._make_key(scope)
+        task = self._tasks.get(key)
+        handler = self._handlers.get(key)
+
+        if not task and not handler:
+            logger.info(f"disconnect 요청 무시(활성 연결 없음): {_log_string(scope)}")
+            return False
+
+        if handler and hasattr(handler, "request_disconnect"):
+            await handler.request_disconnect(reason=reason)
+
+        if task and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            logger.info(
+                f"disconnect 완료: {_log_string(scope)}"
+                + (f" (reason: {reason})" if reason else "")
+            )
+        else:
+            logger.info(f"disconnect 요청 처리: 이미 종료된 연결 {_log_string(scope)}")
+
+        return True

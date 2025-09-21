@@ -1,0 +1,109 @@
+{
+  "type": "record",
+  "name": "DlqEvent",
+  "namespace": "com.chiringchiring.events",
+  "doc": "Dead Letter Queue 이벤트 스키마",
+  "fields": [
+    {
+      "name": "action",
+      "type": "string",
+      "doc": "액션 타입 (dlq)"
+    },
+    {
+      "name": "reason",
+      "type": "string",
+      "doc": "DLQ로 전송된 이유"
+    },
+    {
+      "name": "original_topic",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "원본 토픽명 (선택사항)"
+    },
+    {
+      "name": "original_partition",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "원본 파티션 번호 (선택사항)"
+    },
+    {
+      "name": "original_offset",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "원본 오프셋 (선택사항)"
+    },
+    {
+      "name": "target",
+      "type": {
+        "type": "record",
+        "name": "DlqTarget",
+        "doc": "DLQ 대상 정보",
+        "fields": [
+          {
+            "name": "exchange",
+            "type": "string",
+            "doc": "거래소명"
+          },
+          {
+            "name": "region",
+            "type": "string",
+            "doc": "지역"
+          },
+          {
+            "name": "request_type",
+            "type": "string",
+            "doc": "요청 타입"
+          }
+        ]
+      }
+    },
+    {
+      "name": "meta",
+      "type": {
+        "type": "record",
+        "name": "DlqMeta",
+        "doc": "DLQ 메타데이터",
+        "fields": [
+          {
+            "name": "schema_version",
+            "type": "string",
+            "doc": "스키마 버전"
+          },
+          {
+            "name": "correlation_id",
+            "type": "string",
+            "doc": "상관관계 ID"
+          },
+          {
+            "name": "observed_key",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "관찰된 키 (선택사항)"
+          },
+          {
+            "name": "raw_context",
+            "type": {
+              "type": "map",
+              "values": "string"
+            },
+            "doc": "원본 컨텍스트 (문자열로 직렬화)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "detail_error",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "doc": "상세 에러 정보"
+    },
+    {
+      "name": "retry_count",
+      "type": "int",
+      "default": 0,
+      "doc": "재시도 횟수"
+    }
+  ]
+}
