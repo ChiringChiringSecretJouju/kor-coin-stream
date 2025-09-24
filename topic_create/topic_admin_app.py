@@ -15,8 +15,8 @@ from typing import Any
 from confluent_kafka.admin import AdminClient
 from confluent_kafka.error import KafkaError, KafkaException
 
-from config.settings import kafka_settings
-from infra.messaging.data_admin import delete_all_topics, new_topic_initialization
+from src.config.settings import kafka_settings
+from src.infra.messaging.data_admin import delete_all_topics, new_topic_initialization
 
 
 def list_existing_topics() -> list[str]:
@@ -271,122 +271,153 @@ def create_sample_config() -> None:
         print(f"❌ 샘플 설정 파일 생성 실패: {e}")
 
 
+def create_all_topics(force: bool = False) -> None:
+    """모든 설정 파일의 토픽을 일괄 생성합니다.
+
+    Args:
+        force (bool): 확인 없이 강제 생성 여부
+    """
+    config_files = [
+        "websocket_topics_config.json",
+        "additional_topics_config.json",
+        "realtime_batch_topics_config.json",
+    ]
+
+    if not force:
+        print("\n📋 다음 설정 파일들의 토픽을 생성합니다:")
+        for config_file in config_files:
+            config_path = Path(__file__).parent / config_file
+            if config_path.exists():
+                print(f"  ✅ {config_file}")
+            else:
+                print(f"  ❌ {config_file} (파일 없음)")
+
+        confirm = input("\n🚀 모든 토픽을 생성하시겠습니까? (yes/no): ")
+        if confirm.lower() not in ["yes", "y"]:
+            print("토픽 생성이 취소되었습니다.")
+            return
+
+    print("\n🔧 모든 토픽을 생성하는 중...")
+    success_count = 0
+
+    for config_file in config_files:
+        config_path = Path(__file__).parent / config_file
+        if config_path.exists():
+            try:
+                print(f"\n📁 {config_file} 처리 중...")
+                create_topics_from_config(config_file)
+                success_count += 1
+            except Exception as e:
+                print(f"❌ {config_file} 처리 실패: {e}")
+        else:
+            print(f"⚠️  {config_file} 파일을 찾을 수 없습니다.")
+
+    print(f"\n✅ 총 {success_count}/{len(config_files)}개 설정 파일 처리 완료")
+
+
+def delete_topics(force: bool = False) -> None:
+    """모든 토픽을 삭제합니다.
+
+    Args:
+        force (bool): 확인 없이 강제 삭제 여부
+    """
+    if not force:
+        topics = list_existing_topics()
+        if not topics:
+            print("삭제할 토픽이 없습니다.")
+            return
+
+        print("\n현재 존재하는 토픽:")
+        for topic in topics:
+            print(f"  - {topic}")
+
+        confirm = input("\n⚠️  모든 토픽을 삭제하시겠습니까? (yes/no): ")
+        if confirm.lower() not in ["yes", "y"]:
+            print("토픽 삭제가 취소되었습니다.")
+            return
+
+    try:
+        print("\n🗑️  모든 토픽을 삭제하는 중...")
+        delete_all_topics()
+        print("✅ 모든 토픽이 성공적으로 삭제되었습니다.")
+    except Exception as e:
+        print(f"❌ 토픽 삭제 중 오류 발생: {e}")
+        sys.exit(1)
+
+
 def main() -> None:
-    """메인 함수"""
+    """메인 함수 - CLI 인터페이스 제공"""
     parser = argparse.ArgumentParser(
-        description="Kafka 토픽 관리 애플리케이션",
+        description="Kafka Topic Administration Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 사용 예시:
-  # 대화형 토픽 생성
-  python topic_admin_app.py create
-
-  # 설정 파일로 토픽 생성
-  python topic_admin_app.py create --config topic_config.json
-
-  # 토픽 목록 조회
-  python topic_admin_app.py list
-
-  # 특정 토픽 상세 정보 조회
-  python topic_admin_app.py info ticker-data-value orderbook-data-value
-
-  # 모든 토픽 삭제 (주의!)
-  python topic_admin_app.py delete-all --confirm
-
-  # 샘플 설정 파일 생성
-  python topic_admin_app.py sample-config
+  python topic_admin_app.py --list                    # 토픽 목록 조회
+  python topic_admin_app.py --details                 # 토픽 상세 정보
+  python topic_admin_app.py --create-all              # 모든 토픽 생성
+  python topic_admin_app.py --config realtime_batch_topics_config.json  # 특정 설정 파일로 토픽 생성
+  python topic_admin_app.py --delete --force          # 모든 토픽 강제 삭제
         """,
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="사용 가능한 명령어")
+    # 조회 옵션
+    parser.add_argument("--list", action="store_true", help="토픽 목록 조회")
+    parser.add_argument("--details", action="store_true", help="토픽 상세 정보 조회")
 
-    # create 명령어
-    create_parser = subparsers.add_parser("create", help="토픽 생성")
-    create_parser.add_argument(
-        "--config", "-c", help="JSON 설정 파일 경로 (지정하지 않으면 대화형 모드)"
-    )
+    # 생성 옵션
+    parser.add_argument("--create-all", action="store_true", help="모든 설정 파일의 토픽 생성")
+    parser.add_argument("--config", type=str, help="특정 설정 파일로 토픽 생성")
+    parser.add_argument("--interactive", action="store_true", help="대화형 토픽 생성")
+    parser.add_argument("--sample", action="store_true", help="샘플 설정 파일 생성")
 
-    # list 명령어
-    subparsers.add_parser("list", help="토픽 목록 조회")
-
-    # info 명령어
-    info_parser = subparsers.add_parser("info", help="토픽 상세 정보 조회")
-    info_parser.add_argument(
-        "topics", nargs="*", help="조회할 토픽명들 (지정하지 않으면 모든 토픽)"
-    )
-
-    # delete-all 명령어
-    delete_parser = subparsers.add_parser("delete-all", help="모든 토픽 삭제")
-    delete_parser.add_argument(
-        "--confirm",
-        action="store_true",
-        help="삭제 확인 (이 옵션 없이는 실행되지 않음)",
-    )
-
-    # sample-config 명령어
-    subparsers.add_parser("sample-config", help="샘플 설정 파일 생성")
+    # 삭제 옵션
+    parser.add_argument("--delete", action="store_true", help="모든 토픽 삭제")
+    parser.add_argument("--force", action="store_true", help="확인 없이 강제 실행")
 
     args = parser.parse_args()
 
-    if not args.command:
+    # 인수가 없으면 도움말 출력
+    if len(sys.argv) == 1:
         parser.print_help()
         return
 
-    print(f"🔗 Kafka 브로커: {kafka_settings.BOOTSTRAP_SERVERS}")
-
     try:
-        if args.command == "create":
-            if args.config:
-                create_topics_from_config(args.config)
-            else:
-                create_topics_interactive()
-
-        elif args.command == "list":
+        if args.list:
             topics = list_existing_topics()
             if topics:
-                print(f"\n📋 기존 토픽 목록 (총 {len(topics)}개):")
-                for i, topic in enumerate(topics, 1):
-                    print(f"  {i:2d}. {topic}")
+                print(f"\n📋 현재 토픽 목록 (총 {len(topics)}개):")
+                for topic in topics:
+                    print(f"  - {topic}")
             else:
                 print("📭 토픽이 없습니다.")
 
-        elif args.command == "info":
-            show_topic_details(args.topics if args.topics else None)
+        elif args.details:
+            show_topic_details()
 
-        elif args.command == "delete-all":
-            if not args.confirm:
-                print("❌ 모든 토픽을 삭제하려면 --confirm 옵션을 사용하세요.")
-                print("⚠️  이 작업은 되돌릴 수 없습니다!")
-                return
+        elif args.create_all:
+            create_all_topics(force=args.force)
 
-            topics = list_existing_topics()
-            if not topics:
-                print("📭 삭제할 토픽이 없습니다.")
-                return
+        elif args.config:
+            create_topics_from_config(args.config)
 
-            print(f"⚠️  {len(topics)}개의 모든 토픽을 삭제합니다:")
-            for topic in topics:
-                print(f"  - {topic}")
+        elif args.interactive:
+            create_topics_interactive()
 
-            final_confirm = input(
-                "\n정말로 모든 토픽을 삭제하시겠습니까? (DELETE 입력): "
-            )
-            if final_confirm != "DELETE":
-                print("❌ 토픽 삭제가 취소되었습니다.")
-                return
-
-            print("\n🗑️  모든 토픽 삭제 중...")
-            delete_all_topics()
-            print("✅ 모든 토픽이 삭제되었습니다.")
-
-        elif args.command == "sample-config":
+        elif args.sample:
             create_sample_config()
 
+        elif args.delete:
+            delete_topics(force=args.force)
+
+        else:
+            print("❌ 유효한 옵션을 선택해주세요.")
+            parser.print_help()
+
     except KeyboardInterrupt:
-        print("\n❌ 사용자에 의해 중단되었습니다.")
+        print("\n\n⚠️  사용자에 의해 중단되었습니다.")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ 예상치 못한 오류가 발생했습니다: {e}")
+        print(f"\n❌ 예상치 못한 오류가 발생했습니다: {e}")
         sys.exit(1)
 
 

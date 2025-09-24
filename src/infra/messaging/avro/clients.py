@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from typing import Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from confluent_kafka import Producer, Consumer
 from src.common.logger import PipelineLogger
@@ -118,15 +118,18 @@ class AvroProducerWrapper:
         logger.info("Avro Producer 종료")
 
     async def send_and_wait(
-        self, topic: str, value: dict[str, Any], key: dict[str, Any] | None = None
+        self,
+        topic: str,
+        value: dict[str, Any] | bytes,
+        key: dict[str, Any] | bytes | str | None = None,
     ) -> None:
         """
         Avro 메시지 전송 - 큐에 추가
 
         Args:
             topic: 토픽명
-            value: Value 객체 (딕셔너리) - Any 사용 사유: Avro 메시지는 다양한 타입의 필드를 포함할 수 있음
-            key: Key 객체 (딕셔너리, 선택사항) - Any 사용 사유: Avro 키는 다양한 타입의 필드를 포함할 수 있음
+            value: Value 객체 (딕셔너리 또는 이미 직렬화된 바이트)
+            key: Key 객체 (딕셔너리, 바이트, 문자열, 선택사항)
         """
         if not self._started or not self.producer:
             raise RuntimeError("Avro Producer not started")

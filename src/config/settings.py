@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+env_prefix = Path(__file__).parent.parent / "config"
 
 
 def env_settings(prefix: str) -> SettingsConfigDict:
     return SettingsConfigDict(
         env_prefix=prefix,
-        env_file="config/.env",
+        env_file=env_prefix / ".env",
         env_file_encoding="utf-8",
-        case_sensitive=True,
+        case_sensitive=False,
         extra="ignore",
     )
 
@@ -18,7 +22,7 @@ class KafkaSettings(BaseSettings):
     """Kafka 관련 설정"""
 
     BOOTSTRAP_SERVERS: str = "localhost:9092"
-    CONSUMER_GROUP_ID: str = "korea-coin-stream"
+    CONSUMER_GROUP_ID: str = "coin-stream"
     COMMAND_TOPIC: list[str] = Field(default=["ws.command"])
     STATUS_TOPIC: list[str] = Field(default=["ws.status"])
     DISCONNECTION_TOPIC: list[str] = Field(default=["ws.disconnection"])

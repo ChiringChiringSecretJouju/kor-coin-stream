@@ -1,14 +1,13 @@
-from __future__ import annotations
-
+from confluent_kafka import Producer, Consumer
+import orjson
 import asyncio
-import json
 import threading
-from datetime import datetime
 from typing import Any
-
-from confluent_kafka import Consumer, Producer
-from src.config.settings import kafka_settings
 from src.core.dto.internal.mq import ConsumerConfigDomain, ProducerConfigDomain
+from src.config.settings import kafka_settings
+from src.infra.messaging.serializers.unified_serializer import (
+    create_unified_serializers,
+)
 
 
 def _datetime_serializer(obj):
@@ -19,10 +18,8 @@ def _datetime_serializer(obj):
 
 
 def default_value_serializer(value: Any) -> bytes:
-    # 기본은 JSON 직렬화 (datetime 처리 포함)
-    return json.dumps(value, ensure_ascii=False, default=_datetime_serializer).encode(
-        "utf-8"
-    )
+    # orjson 직렬화 (datetime 처리 포함) - 3-5배 빠름
+    return orjson.dumps(value, default=_datetime_serializer)
 
 
 def default_key_serializer(value: Any) -> bytes:
@@ -36,8 +33,8 @@ def default_key_serializer(value: Any) -> bytes:
 
 
 def default_value_deserializer(raw: bytes) -> Any:
-    # 기본은 JSON 역직렬화
-    return json.loads(raw.decode("utf-8"))
+    # orjson 역직렬화 - 2-4배 빠름
+    return orjson.loads(raw)
 
 
 def default_key_deserializer(raw: bytes | None) -> Any | None:
@@ -67,6 +64,7 @@ def producer_config(**overrides: Any) -> dict[str, Any]:
         linger_ms=50,  # 50ms 대기 (배치 효율 극대화)
         compression_type="lz4",  # LZ4 압축 (빠른 압축/해제)
         # 안정성 및 성능 설정
+        enable_idempotence=True,
         retries=2147483647,  # 최대 재시도
         max_in_flight_requests_per_connection=5,  # 성능 최적화
         request_timeout_ms=30000,  # 30초 타임아웃
@@ -87,6 +85,7 @@ def producer_config(**overrides: Any) -> dict[str, Any]:
         "compression.type": cfg_domain.compression_type,
         # "buffer.memory": cfg_domain.buffer_memory,  # confluent-kafka에서 지원되지 않음
         "retries": cfg_domain.retries,
+        "enable.idempotence": cfg_domain.enable_idempotence,
         "max.in.flight.requests.per.connection": cfg_domain.max_in_flight_requests_per_connection,
         "request.timeout.ms": cfg_domain.request_timeout_ms,
         "delivery.timeout.ms": cfg_domain.delivery_timeout_ms,
@@ -211,9 +210,9 @@ class AsyncProducerWrapper:
         if not self._started or not self.producer:
             raise RuntimeError("Producer not started")
 
-        # 직렬화 처리
-        serialized_value = self.value_serializer(value) if value is not None else None
-        serialized_key = self.key_serializer(key) if key is not None else None
+        # 통합 직렬화 처리 (바이트/JSON 자동 구분)
+        serialized_value = self.value_serializer(value)
+        serialized_key = self.key_serializer(key)
 
         # 메시지를 큐에 추가 (비동기)
         message = {"topic": topic, "value": serialized_value, "key": serialized_key}
@@ -262,7 +261,9 @@ class AsyncProducerWrapper:
         """Delivery report 콜백 - poll 스레드에서 호출됨"""
         if err is not None:
             # 전송 실패 로깅 (실제 환경에서는 로거 + 메트릭 사용)
-            print(f"Message delivery failed: {err}")
+            topic = msg.topic() if msg else "unknown"
+            key = msg.key() if msg else "unknown"
+            print(f"Message delivery failed: {err} --> Topic: {topic}, Key: {key}")
         # 성공한 경우는 조용히 처리 (필요시 메트릭 수집)
 
 
@@ -412,8 +413,8 @@ def create_producer(**overrides: Any) -> AsyncProducerWrapper:
     # 성능 최적화된 confluent-kafka 설정 생성
     cfg = producer_config(**overrides)
 
-    # 직렬화 함수는 별도로 전달 (성능 최적화된 기본 함수 사용)
-    serializers = (default_value_serializer, default_key_serializer)
+    # 통합 직렬화기 사용 (바이트/JSON 자동 구분)
+    serializers = create_unified_serializers()
 
     return AsyncProducerWrapper(cfg, serializers)
 

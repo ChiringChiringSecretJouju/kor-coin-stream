@@ -48,7 +48,7 @@ class SchemaCompatibilityError(SchemaRegistryError):
     pass
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass
 class Schema:
     """스키마 정보를 담는 데이터 클래스"""
 
@@ -58,7 +58,6 @@ class Schema:
     subject: str
 
 
-@dataclass(slots=True)
 class SchemaRegistryClient:
     """
     Schema Registry 클라이언트
@@ -66,11 +65,15 @@ class SchemaRegistryClient:
     Confluent Schema Registry와 비동기 통신을 통해 스키마 관리를 수행합니다.
     """
 
-    base_url: str
-    auth: tuple[str, str] | None = None
-    timeout: float = 30.0
-
-    def __post_init__(self):
+    def __init__(
+        self, 
+        base_url: str = "http://localhost:8082",
+        auth: tuple[str, str] | None = None,
+        timeout: float = 30.0
+    ):
+        self.base_url = base_url
+        self.auth = auth
+        self.timeout = timeout
         self._session: aiohttp.ClientSession | None = None
         self._schema_cache: dict[int, Schema] = {}
         self._subject_cache: dict[str, list[Schema]] = {}
@@ -305,3 +308,124 @@ class SchemaRegistryClient:
 
         logger.info(f"주제 삭제 완료: subject={subject}, permanent={permanent}")
         return response
+
+    async def list_subjects(self) -> list[str]:
+        """
+        등록된 모든 스키마 주제 목록을 조회합니다.
+
+        Returns:
+            스키마 주제명 리스트
+        """
+        response = await self._request("GET", "subjects")
+        return response
+
+
+# 유틸리티 함수들
+async def register_schema_from_file(
+    schema_file_path: str, 
+    subject: str,
+    base_url: str = "http://localhost:8082"
+) -> int:
+    """
+    파일에서 스키마를 읽어서 등록합니다.
+    
+    Args:
+        schema_file_path: 스키마 파일 경로 (.avsc)
+        subject: 스키마 주제명
+        base_url: Schema Registry URL
+        
+    Returns:
+        등록된 스키마 ID
+    """
+    import os
+    
+    if not os.path.exists(schema_file_path):
+        raise FileNotFoundError(f"스키마 파일을 찾을 수 없습니다: {schema_file_path}")
+    
+    with open(schema_file_path, 'r', encoding='utf-8') as f:
+        schema_content = f.read()
+    
+    client = SchemaRegistryClient(base_url=base_url)
+    try:
+        schema_id = await client.register_schema(subject, schema_content)
+        logger.info(f"스키마 등록 성공: {schema_file_path} -> {subject} (ID: {schema_id})")
+        return schema_id
+    finally:
+        await client.close()
+
+
+async def register_all_schemas(
+    schemas_dir: str = "src/infra/messaging/schemas",
+    base_url: str = "http://localhost:8082"
+) -> dict[str, int]:
+    """
+    스키마 디렉토리의 모든 .avsc 파일을 등록합니다.
+    
+    Args:
+        schemas_dir: 스키마 디렉토리 경로
+        base_url: Schema Registry URL
+        
+    Returns:
+        {subject: schema_id} 매핑
+    """
+    import os
+    import glob
+    
+    schema_mappings = {
+        "realtime_ticker.avsc": "ticker-data-value",
+        "metrics_event.avsc": "metrics-events-value", 
+        "connect_success.avsc": "connect-success-events-value",
+        "error_event.avsc": "error-events-value",
+        "dlq_event.avsc": "dlq-events-value",
+        "orderbook_data.avsc": "orderbook-data-value",
+        "trade_data.avsc": "trade-data-value",
+        "connect_request.avsc": "ws.command-value"
+    }
+    
+    results = {}
+    client = SchemaRegistryClient(base_url=base_url)
+    
+    try:
+        for filename, subject in schema_mappings.items():
+            file_path = os.path.join(schemas_dir, filename)
+            if os.path.exists(file_path):
+                try:
+                    schema_id = await register_schema_from_file(file_path, subject, base_url)
+                    results[subject] = schema_id
+                    logger.info(f"✅ {filename} -> {subject} (ID: {schema_id})")
+                except Exception as e:
+                    logger.error(f"❌ {filename} 등록 실패: {e}")
+            else:
+                logger.warning(f"⚠️  스키마 파일 없음: {file_path}")
+                
+        logger.info(f"🎉 총 {len(results)}개 스키마 등록 완료!")
+        return results
+        
+    finally:
+        await client.close()
+
+
+async def delete_all_subjects(base_url: str = "http://localhost:8082") -> None:
+    """
+    모든 스키마 주제를 삭제합니다 (개발용).
+    
+    Args:
+        base_url: Schema Registry URL
+    """
+    client = SchemaRegistryClient(base_url=base_url)
+    
+    try:
+        subjects = await client.list_subjects()
+        logger.info(f"삭제할 주제들: {subjects}")
+        
+        for subject in subjects:
+            try:
+                await client.delete_subject(subject, permanent=True)
+                logger.info(f"✅ 주제 삭제: {subject}")
+            except Exception as e:
+                logger.error(f"❌ 주제 삭제 실패 {subject}: {e}")
+                
+        logger.info("🗑️  모든 주제 삭제 완료!")
+        
+    finally:
+        await client.close()

@@ -4,7 +4,7 @@ import argparse
 import asyncio
 from typing import Sequence
 
-from infra.messaging.connect.producer_client import ConnectRequestProducer
+from src.infra.messaging.connect.producer_client import ConnectRequestProducer
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

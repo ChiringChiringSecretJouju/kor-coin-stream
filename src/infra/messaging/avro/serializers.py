@@ -24,7 +24,6 @@ logger = PipelineLogger.get_logger("avro_serializers", "avro")
 MAGIC_BYTE = 0
 
 
-@dataclass(slots=True)
 class AvroSerializer:
     """
     Avro 직렬화기
@@ -32,12 +31,17 @@ class AvroSerializer:
     Confluent Schema Registry와 연동하여 메시지를 Avro 형식으로 직렬화합니다.
     """
 
-    schema_registry_client: SchemaRegistryClient
-    subject: str
-    schema_id: int | None = None
-    schema_str: str | None = None
-
-    def __post_init__(self):
+    def __init__(
+        self,
+        schema_registry_client: SchemaRegistryClient,
+        subject: str,
+        schema_id: int | None = None,
+        schema_str: str | None = None,
+    ):
+        self.schema_registry_client = schema_registry_client
+        self.subject = subject
+        self.schema_id = schema_id
+        self.schema_str = schema_str
         # Any 사용 사유: Avro 스키마는 중첩된 복잡한 구조를 가질 수 있어 정확한 타입 정의가 어려움
         self._parsed_schema: dict[str, Any] | None = None
 
@@ -127,7 +131,6 @@ class AvroSerializer:
         return result
 
 
-@dataclass(slots=True)
 class AvroDeserializer:
     """
     Avro 역직렬화기
@@ -135,10 +138,13 @@ class AvroDeserializer:
     Confluent Wire Format으로 인코딩된 메시지를 역직렬화합니다.
     """
 
-    schema_registry_client: SchemaRegistryClient
-    reader_schema_str: str | None = None
-
-    def __post_init__(self):
+    def __init__(
+        self,
+        schema_registry_client: SchemaRegistryClient,
+        reader_schema_str: str | None = None,
+    ):
+        self.schema_registry_client = schema_registry_client
+        self.reader_schema_str = reader_schema_str
         # Any 사용 사유: Avro 스키마는 중첩된 복잡한 구조를 가질 수 있어 정확한 타입 정의가 어려움
         self._schema_cache: dict[int, dict[str, Any]] = {}
         self._reader_schema: dict[str, Any] | None = None

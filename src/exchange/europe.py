@@ -40,7 +40,7 @@ class BitfinexTickerData:
 
 
 class BitfinexWebsocketHandler(BaseGlobalWebsocketHandler):
-    """비트파이넥스 거래소 웹소켓 핸들러"""
+    """비트파이넥스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -48,6 +48,18 @@ class BitfinexWebsocketHandler(BaseGlobalWebsocketHandler):
         self.set_heartbeat(kind="frame")
         # 구독된 심볼 정보를 저장 (channel_id -> symbol 매핑)
         self._channel_symbol_map: dict[int, str] = {}
+    
+    @override
+    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+        """웹소켓 연결 시 배치 시스템 초기화"""
+        await self._initialize_batch_system()
+        await super().websocket_connection(url, parameter_info)
+    
+    @override
+    async def disconnect(self) -> None:
+        """연결 종료 시 배치 시스템 정리"""
+        await self._cleanup_batch_system()
+        await super().disconnect()
 
     def _convert_bitfinex_array_to_dataclass(
         self, channel_id: int, data: list

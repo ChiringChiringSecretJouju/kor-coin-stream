@@ -27,6 +27,7 @@ class ProducerConfigDomain:
     max_in_flight_requests_per_connection: int  # 5 (성능 최적화)
     request_timeout_ms: int  # 30000ms (타임아웃)
     delivery_timeout_ms: int  # 120000ms (전체 전송 타임아웃)
+    enable_idempotence: bool = True  # True (일관성 최적화)
 
     # 직렬화 콜백
     value_serializer: Callable[..., bytes]

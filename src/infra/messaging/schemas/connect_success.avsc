@@ -1,0 +1,89 @@
+{
+  "type": "record",
+  "name": "ConnectSuccessEvent",
+  "namespace": "com.chiringchiring.connect",
+  "doc": "연결 성공 이벤트 스키마",
+  "fields": [
+    {
+      "name": "ticket_id",
+      "type": "string",
+      "doc": "티켓 고유 ID"
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "doc": "액션 타입 (connect_success)"
+    },
+    {
+      "name": "ack",
+      "type": "string",
+      "doc": "확인 상태 (clear, pending 등)"
+    },
+    {
+      "name": "target",
+      "type": {
+        "type": "record",
+        "name": "ConnectionTarget",
+        "doc": "연결 대상 정보",
+        "fields": [
+          {
+            "name": "exchange",
+            "type": "string",
+            "doc": "거래소명 (upbit, binance, bybit 등)"
+          },
+          {
+            "name": "region",
+            "type": "string",
+            "doc": "지역 (korea, asia, global 등)"
+          },
+          {
+            "name": "request_type",
+            "type": "string",
+            "doc": "요청 타입 (ticker, orderbook, trade 등)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "symbol",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "심볼 (XRP, BTC 등, 선택적)"
+    },
+    {
+      "name": "timestamp_utc",
+      "type": "string",
+      "doc": "UTC 타임스탬프 (ISO 8601 형식)"
+    },
+    {
+      "name": "meta",
+      "type": {
+        "type": "record",
+        "name": "ConnectSuccessMeta",
+        "doc": "메타데이터 정보",
+        "fields": [
+          {
+            "name": "ticket_id",
+            "type": "string",
+            "doc": "메타 티켓 ID"
+          },
+          {
+            "name": "schema_version",
+            "type": "string",
+            "doc": "스키마 버전"
+          },
+          {
+            "name": "correlation_id",
+            "type": "string",
+            "doc": "상관관계 ID"
+          },
+          {
+            "name": "observed_key",
+            "type": "string",
+            "doc": "관찰 키 (exchange/region/request_type 형식)"
+          }
+        ]
+      }
+    }
+  ]
+}

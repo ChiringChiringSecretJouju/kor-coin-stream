@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any
+
+import orjson
 
 
 from src.common.logger import PipelineLogger
@@ -55,8 +56,8 @@ class SubscriptionManager:
         )
 
     async def prepare_subscription_message(self, params: SocketParams) -> str:
-        """구독 메시지 JSON 직렬화"""
-        return json.dumps(params)
+        """구독 메시지 JSON 직렬화 (orjson 사용)"""
+        return orjson.dumps(params).decode("utf-8")
 
     def merge_symbols(
         self,

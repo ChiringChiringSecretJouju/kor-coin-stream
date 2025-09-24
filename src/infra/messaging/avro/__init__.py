@@ -10,19 +10,19 @@ Avro 직렬화/역직렬화 및 Schema Registry 지원 모듈
 - 스키마 진화 지원 (BACKWARD, FORWARD, FULL 호환성)
 """
 
-from infra.messaging.avro.serializers import (
+from src.infra.messaging.avro.serializers import (
     AvroSerializer,
     AvroDeserializer,
     create_avro_serializer,
     create_avro_deserializer,
 )
-from infra.messaging.avro.schema_registry import (
+from src.infra.messaging.avro.schema_registry import (
     SchemaRegistryClient,
     SchemaRegistryError,
     SchemaNotFoundError,
     SchemaCompatibilityError,
 )
-from infra.messaging.avro.clients import (
+from src.infra.messaging.avro.clients import (
     create_avro_producer,
     create_avro_consumer,
     AvroProducerWrapper,
@@ -32,16 +32,14 @@ from infra.messaging.avro.clients import (
 __all__ = [
     # Serializers
     "AvroSerializer",
-    "AvroDeserializer", 
+    "AvroDeserializer",
     "create_avro_serializer",
     "create_avro_deserializer",
-    
     # Schema Registry
     "SchemaRegistryClient",
     "SchemaRegistryError",
-    "SchemaNotFoundError", 
+    "SchemaNotFoundError",
     "SchemaCompatibilityError",
-    
     # Clients
     "create_avro_producer",
     "create_avro_consumer",

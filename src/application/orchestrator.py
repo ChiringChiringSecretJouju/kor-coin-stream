@@ -15,7 +15,11 @@ from src.common.logger import PipelineLogger
 from src.core.dto.internal.cache import WebsocketConnectionSpecDomain
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.orchestrator import StreamContextDomain
-from src.core.types import SocketParams, CONNECTION_STATUS_DISCONNECTED
+from src.core.types import (
+    SocketParams,
+    CONNECTION_STATUS_DISCONNECTED,
+    CONNECTION_STATUS_CONNECTED,
+)
 from src.core.dto.io.target import ConnectionTargetDTO
 
 # 새로운 컴포넌트들
@@ -36,7 +40,6 @@ from src.exchange.asia import (
     BybitWebsocketHandler,
     OKXWebsocketHandler,
     HuobiWebsocketHandler,
-    GateioWebsocketHandler,
 )
 from src.infra.cache.cache_store import WebsocketConnectionCache
 
@@ -52,7 +55,6 @@ ExchangeSocketHandler: TypeAlias = (
     | BybitWebsocketHandler
     | OKXWebsocketHandler
     | HuobiWebsocketHandler
-    | GateioWebsocketHandler
     | BitfinexWebsocketHandler
     | CoinbaseWebsocketHandler
     | KrakenWebsocketHandler
@@ -70,7 +72,6 @@ HANDLER_MAP: Final[dict[str, type[ExchangeSocketHandler]]] = {
     "bybit": BybitWebsocketHandler,
     "okx": OKXWebsocketHandler,
     "huobi": HuobiWebsocketHandler,
-    "gateio": GateioWebsocketHandler,
     # 유럽 거래소
     "bitfinex": BitfinexWebsocketHandler,
     # 북미 거래소
@@ -120,7 +121,7 @@ class StreamOrchestrator:
 
         # 2. 핸들러 생성 (커넥터 책임)
         try:
-            handler = self._connector.create_handler_with(ctx.scope)
+            handler = self._connector.create_handler_with(ctx.scope, ctx.projection)
             logger.info(
                 f"{ctx.scope.exchange} 핸들러 생성: {handler.__class__.__name__}"
             )
@@ -229,12 +230,21 @@ class WebsocketConnector:
         return self.handler_map.get(exchange.lower())
 
     def create_handler_with(
-        self, scope: ConnectionScopeDomain
+        self, scope: ConnectionScopeDomain, projection: list[str] | None = None
     ) -> ExchangeSocketHandler:
         handler_class = self.get_handler_class(scope.exchange)
         if not handler_class:
             raise ValueError(f"Unsupported exchange: {scope.exchange}")
-        return handler_class()
+        handler = handler_class(
+            exchange_name=scope.exchange,
+            region=scope.region,
+            request_type=scope.request_type,
+        )
+        # projection 필드 설정
+        if hasattr(handler, "projection"):
+            handler.projection = projection
+            logger.info(f"{scope.exchange}: Projection set to {projection}")
+        return handler
 
     async def run_with(
         self, ctx: StreamContextDomain, handler: ExchangeSocketHandler
@@ -251,7 +261,7 @@ class WebsocketConnector:
         url: str,
         socket_params: SocketParams,
     ) -> None:
-        await handler.websocket_connection(url=url, socket_params=socket_params)
+        await handler.websocket_connection(url=url, parameter_info=socket_params)
 
 
 class RedisCacheCoordinator:
@@ -264,7 +274,7 @@ class RedisCacheCoordinator:
     async def on_start(
         self, cache: WebsocketConnectionCache, symbols: list[str]
     ) -> None:
-        await cache.update_connection_state("CONNECTED")
+        await cache.update_connection_state(CONNECTION_STATUS_CONNECTED)
         if symbols:
             await cache.replace_symbols(symbols)
 

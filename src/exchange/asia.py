@@ -3,42 +3,97 @@ from src.core.types import TickerResponseData
 from typing import Any, override
 import gzip
 import orjson
+from src.core.connection.utils.parse import preprocess_ticker_message, update_dict
 
 
 class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
-    """바이낸스 거래소 웹소켓 핸들러"""
+    """바이낸스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Binance는 일반적으로 ping/pong 프레임 사용
         self.set_heartbeat(kind="frame")
 
+    @override
+    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+        """웹소켓 연결 시 배치 시스템 초기화"""
+        await self._initialize_batch_system()
+        await super().websocket_connection(url, parameter_info)
+
+    @override
+    async def ticker_message(self, message: Any) -> TickerResponseData | None:
+        parsed_message = self._parse_message(message)
+
+        # 전처리된 메시지 생성 (Binance는 플랫 구조)
+        if isinstance(parsed_message, dict):
+            preprocessed_message = preprocess_ticker_message(
+                parsed_message, self.projection
+            )
+            return await super().ticker_message(preprocessed_message)
+
+        return await super().ticker_message(message)
+
+    @override
+    async def disconnect(self) -> None:
+        """연결 종료 시 배치 시스템 정리"""
+        await self._cleanup_batch_system()
+        await super().disconnect()
+
 
 class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
-    """바이비트 거래소 웹소켓 핸들러"""
+    """바이비트 거래소 웹소켓 핸들러 (배치 수집 지원)"""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Bybit은 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message='{"op":"ping"}')
 
+    @override
+    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+        """웹소켓 연결 시 배치 시스템 초기화"""
+        await self._initialize_batch_system()
+        await super().websocket_connection(url, parameter_info)
 
-class GateioWebsocketHandler(BaseGlobalWebsocketHandler):
-    """게이트아이오 거래소 웹소켓 핸들러"""
+    @override
+    async def ticker_message(self, message: Any) -> TickerResponseData | None:
+        parsed_message = self._parse_message(message)
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        # Gate.io는 ping 메시지 전송 방식 사용
-        self.set_heartbeat(kind="text", message='{"method": "ping"}')
+        # data 필드 병합 (Bybit은 중첩 구조 + 중복 필드)
+        if isinstance(parsed_message, dict):
+            data_sub: dict | None = parsed_message.get("data", None)
+            if isinstance(data_sub, dict):
+                # data 필드를 최상위로 병합
+                merged_message = update_dict(parsed_message, "data")
+            else:
+                merged_message = parsed_message
+
+            preprocessed_message = preprocess_ticker_message(
+                merged_message, self.projection
+            )
+            return await super().ticker_message(preprocessed_message)
+
+        return await super().ticker_message(message)
+
+    @override
+    async def disconnect(self) -> None:
+        """연결 종료 시 배치 시스템 정리"""
+        await self._cleanup_batch_system()
+        await super().disconnect()
 
 
 class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
-    """후오비(HTX) 거래소 웹소켓 핸들러"""
+    """후오비(HTX) 거래소 웹소켓 핸들러 (배치 수집 지원)"""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Huobi는 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message='{"ping": 1}')
+
+    @override
+    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+        """웹소켓 연결 시 배치 시스템 초기화"""
+        await self._initialize_batch_system()
+        await super().websocket_connection(url, parameter_info)
 
     @override
     def _parse_message(self, message: str | bytes) -> dict[str, Any]:
@@ -69,19 +124,90 @@ class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
         parsed_message = self._parse_message(message)
 
-        if "ping" in parsed_message:
+        # ping/pong 처리 (Huobi 특화)
+        if isinstance(parsed_message, dict) and "ping" in parsed_message:
             ping_value = parsed_message["ping"]
             pong_response = orjson.dumps({"pong": ping_value}).decode("utf-8")
             await self._current_websocket.send(pong_response)
-            return None  # 출력하지 않음
+            return None  # ping 메시지는 수집하지 않음
+
+        # tick 필드 병합 + symbol 추출 (Huobi는 tick 중첩 구조)
+        if isinstance(parsed_message, dict):
+            tick_data: dict | None = parsed_message.get("tick", None)
+            if isinstance(tick_data, dict):
+                # tick 필드를 최상위로 병합
+                merged_message = update_dict(parsed_message, "tick")
+            else:
+                merged_message = parsed_message
+
+            # ch 필드에서 symbol 추출 (예: "market.btcusdt.ticker" → "BTCUSDT")
+            ch_field = merged_message.get("ch", "")
+            if (
+                isinstance(ch_field, str)
+                and ch_field.startswith("market.")
+                and ch_field.endswith(".ticker")
+            ):
+                # "market.btcusdt.ticker"에서 "btcusdt" 추출 후 대문자로 변환
+                symbol_part = ch_field.split(".")[1]  # "btcusdt"
+                merged_message["symbol"] = symbol_part.upper()  # "BTCUSDT"
+
+            # 전처리된 메시지 생성 (projection 적용)
+            preprocessed_message = preprocess_ticker_message(
+                merged_message, self.projection
+            )
+            return await super().ticker_message(preprocessed_message)
 
         return await super().ticker_message(message)
 
+    @override
+    async def disconnect(self) -> None:
+        """연결 종료 시 배치 시스템 정리"""
+        await self._cleanup_batch_system()
+        await super().disconnect()
+
 
 class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
-    """오케이엑스 거래소 웹소켓 핸들러"""
+    """오케이엑스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # OKX는 ping 메시지 전송 방식 사용
         self.set_heartbeat(kind="text", message="ping")
+
+    @override
+    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+        """웹소켓 연결 시 배치 시스템 초기화"""
+        await self._initialize_batch_system()
+        await super().websocket_connection(url, parameter_info)
+
+    @override
+    async def ticker_message(self, message: Any) -> TickerResponseData | None:
+        parsed_message = self._parse_message(message)
+
+        # data 배열 병합 (OKX는 data 배열 구조)
+        if isinstance(parsed_message, dict):
+            data_list = parsed_message.get("data", [])
+            if isinstance(data_list, list) and len(data_list) > 0:
+                # 첫 번째 데이터 항목을 최상위로 병합
+                first_data = data_list[0]
+                if isinstance(first_data, dict):
+                    merged_message = {**parsed_message, **first_data}
+                    merged_message.pop("data", None)  # 원본 data 필드 제거
+                else:
+                    merged_message = parsed_message
+            else:
+                merged_message = parsed_message
+
+            # 전처리된 메시지 생성 (projection 적용)
+            preprocessed_message = preprocess_ticker_message(
+                merged_message, self.projection
+            )
+            return await super().ticker_message(preprocessed_message)
+
+        return await super().ticker_message(message)
+
+    @override
+    async def disconnect(self) -> None:
+        """연결 종료 시 배치 시스템 정리"""
+        await self._cleanup_batch_system()
+        await super().disconnect()
