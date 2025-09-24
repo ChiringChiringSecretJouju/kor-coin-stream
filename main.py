@@ -12,19 +12,21 @@
 import asyncio
 import contextlib
 
-from common.logger import PipelineLogger
-from config.settings import kafka_settings
-from infra.messaging.connect.consumer_client import KafkaConsumerClient
-from infra.messaging.connect.disconnection_consumer import (
+from src.common.logger import PipelineLogger
+from src.config.settings import kafka_settings
+from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
+
+from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
 )
-from infra.cache.cache_client import RedisConnectionManager
-from application.orchestrator import StreamOrchestrator
+from src.infra.cache.cache_client import RedisConnectionManager
+from src.application.orchestrator import StreamOrchestrator
+
 
 logger = PipelineLogger.get_logger("main", "app")
 
 
-async def main():
+async def main() -> None:
     """메인 실행 함수"""
     logger.info("암호화폐 거래소 웹소켓 스트림 파이프라인 시작 (Kafka 소비 모드)")
     # Redis 초기화 (싱글톤)
@@ -41,9 +43,13 @@ async def main():
     )
 
     tasks = [
-        asyncio.create_task(command_consumer.run(), name="ws-command-consumer"),
         asyncio.create_task(
-            disconnection_consumer.run(), name="ws-disconnection-consumer"
+            command_consumer.run(),
+            name="ws-command-consumer",
+        ),
+        asyncio.create_task(
+            disconnection_consumer.run(),
+            name="ws-disconnection-consumer",
         ),
     ]
     try:

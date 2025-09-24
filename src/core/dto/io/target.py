@@ -1,0 +1,13 @@
+from pydantic import BaseModel, ConfigDict
+
+from src.core.types import ExchangeName, Region, RequestType
+
+
+class ConnectionTargetDTO(BaseModel):
+    """이벤트 대상(Target) Pydantic v2 모델."""
+
+    exchange: ExchangeName
+    region: Region
+    request_type: RequestType
+
+    model_config = ConfigDict(use_enum_values=True, extra="forbid")

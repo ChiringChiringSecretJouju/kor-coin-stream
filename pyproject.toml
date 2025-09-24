@@ -61,7 +61,7 @@ ignore = []
 
 [tool.pyrefly]
 # 어떤 소스를 검사할지 지정
-project-includes = ["core", "common"]
+project-includes = ["src"]
 project-excludes = ["**/.[!/.]*", "**/tests", "promiting/**"]
 search-path = ["."]
 
