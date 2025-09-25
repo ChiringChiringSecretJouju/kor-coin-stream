@@ -30,6 +30,7 @@ class KafkaSettings(BaseSettings):
     AUTO_OFFSET_RESET: str = "latest"
     ACKS: str | int = "all"
     LINGER_MS: int = 10
+    SCHEMA_REGISTRY_URL: str = "http://localhost:8082"
 
     model_config = env_settings("KAFKA_")
 

@@ -10,7 +10,7 @@ from src.core.dto.io.commands import DisconnectCommandDTO
 from src.core.dto.io.target import ConnectionTargetDTO
 from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.types import ExchangeName, PayloadAction, PayloadType, Region, RequestType
-from src.infra.messaging.clients.clients import create_consumer, AsyncConsumerWrapper
+from src.infra.messaging.clients.json_client import create_consumer, AsyncConsumerWrapper
 from src.infra.messaging.connect.services.command_validator import GenericValidator
 
 
@@ -18,7 +18,12 @@ logger: Final = PipelineLogger.get_logger("consumer", "disconnect")
 
 
 class KafkaDisconnectionConsumerClient:
-    """ws.disconnection 토픽을 소비하여 연결 종료를 지시하는 컨슈머."""
+    """ws.disconnection 토픽을 소비하여 연결 종료를 지시하는 컨슈머 (리팩토링됨).
+    
+    - 리팩토링된 JSON 클라이언트 사용 (orjson 기반 고성능 역직렬화)
+    - 부모 클래스 기반 비동기 처리 아키텍처
+    - 연결 종료 명령 처리 및 오케스트레이터 연동
+    """
 
     def __init__(self, orchestrator: StreamOrchestrator, topic: list[str]) -> None:
         self.orchestrator = orchestrator

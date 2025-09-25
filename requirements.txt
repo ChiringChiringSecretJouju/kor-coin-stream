@@ -19,3 +19,4 @@ pydantic-settings
 pytest
 pytest-asyncio
 aiokafka[gssapi]
+confluent-kafka[avro,schemaregistry]

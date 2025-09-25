@@ -251,6 +251,13 @@ avro = [
     { name = "orjson" },
     { name = "requests" },
 ]
+schemaregistry = [
+    { name = "attrs" },
+    { name = "authlib" },
+    { name = "cachetools" },
+    { name = "httpx" },
+    { name = "orjson" },
+]
 
 [[package]]
 name = "cryptography"
@@ -478,7 +485,7 @@ dependencies = [
     { name = "aiokafka", extra = ["gssapi"] },
     { name = "cachetools" },
     { name = "cctx" },
-    { name = "confluent-kafka", extra = ["avro"] },
+    { name = "confluent-kafka", extra = ["avro", "schemaregistry"] },
     { name = "fastavro" },
     { name = "kafka-python" },
     { name = "kafka-python-ng" },
@@ -509,7 +516,7 @@ requires-dist = [
     { name = "aiokafka", extras = ["gssapi"], specifier = ">=0.12.0" },
     { name = "cachetools", specifier = ">=6.2.0" },
     { name = "cctx", specifier = ">=1.0.0" },
-    { name = "confluent-kafka", extras = ["avro"], specifier = ">=2.11.1" },
+    { name = "confluent-kafka", extras = ["avro", "schemaregistry"], specifier = ">=2.11.1" },
     { name = "fastavro", specifier = ">=1.12.0" },
     { name = "kafka-python", specifier = ">=2.2.15" },
     { name = "kafka-python-ng", specifier = ">=2.2.3" },

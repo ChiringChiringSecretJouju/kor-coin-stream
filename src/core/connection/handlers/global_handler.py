@@ -122,13 +122,11 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             self._realtime_producer = RealtimeDataProducer()
 
             # 배치 수집기 초기화 (글로벌 거래소 특화 설정)
-            async def emit_batch(
-                message_type: str, batch: list[dict[str, Any]], timestamp: int
-            ) -> bool:
+            async def emit_batch(batch: list[dict[str, Any]]) -> bool:
                 """배치 전송 콜백 함수"""
                 if self._realtime_producer:
-                    return await self._realtime_producer.send_batch_by_type(
-                        scope=self.scope, message_type=message_type, batch=batch
+                    return await self._realtime_producer.send_batch(
+                        scope=self.scope, batch=batch
                     )
                 return False
 
@@ -164,33 +162,6 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             self._realtime_producer = None
 
         logger.info(f"{self.scope.exchange}: Batch collection system cleaned up")
-
-    def get_batch_status(self) -> dict[str, Any]:
-        """배치 수집 상태 조회 (디버깅 및 모니터링용)"""
-        if not self._batch_collector:
-            return {"enabled": False, "status": "not_initialized"}
-
-        batch_status = self._batch_collector.get_batch_status()
-        return {
-            "enabled": self._batch_enabled,
-            "status": "running" if self._batch_collector._is_running else "stopped",
-            "exchange": self.scope.exchange,
-            "region": self.scope.region,
-            "batch_counts": batch_status,
-            "settings": {
-                "batch_size": (
-                    self._batch_collector.batch_size if self._batch_collector else None
-                ),
-                "time_window": (
-                    self._batch_collector.time_window if self._batch_collector else None
-                ),
-                "max_batch_size": (
-                    self._batch_collector.max_batch_size
-                    if self._batch_collector
-                    else None
-                ),
-            },
-        }
 
     def enable_batch_collection(self) -> None:
         """배치 수집 활성화"""

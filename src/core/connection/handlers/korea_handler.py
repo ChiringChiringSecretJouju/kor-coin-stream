@@ -122,13 +122,11 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             self._realtime_producer = RealtimeDataProducer()
 
             # 배치 수집기 초기화 (한국 거래소 특화 설정)
-            async def emit_batch(
-                message_type: str, batch: list[dict[str, Any]], timestamp: int
-            ) -> bool:
+            async def emit_batch(batch: list[dict[str, Any]]) -> bool:
                 """배치 전송 콜백 함수"""
                 if self._realtime_producer:
-                    return await self._realtime_producer.send_batch_by_type(
-                        scope=self.scope, message_type=message_type, batch=batch
+                    return await self._realtime_producer.send_batch(
+                        scope=self.scope, batch=batch
                     )
                 return False
 

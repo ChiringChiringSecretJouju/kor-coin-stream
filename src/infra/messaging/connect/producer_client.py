@@ -21,8 +21,15 @@ from src.core.types import (
     OrderbookResponseData,
     TradeResponseData,
 )
-from src.infra.messaging.clients.clients import create_producer, AsyncProducerWrapper
-from src.infra.messaging.avro import create_avro_serializer, SchemaRegistryClient
+from src.infra.messaging.clients.json_client import (
+    create_producer as create_json_producer,
+    AsyncProducerWrapper as JsonProducerWrapper,
+)
+from src.infra.messaging.clients.avro_client import (
+    create_avro_producer,
+    AvroProducerWrapper,
+)
+
 
 # NOTE: Any 사용 사유
 # - 프로듀서 계층은 외부 전송 경계로, 스키마 확장(필드 추가)과 다양한 이벤트 페이로드를 수용해야 함
@@ -30,26 +37,29 @@ from src.infra.messaging.avro import create_avro_serializer, SchemaRegistryClien
 
 
 logger = PipelineLogger(__name__)
-# NOTE: 직렬화는 AsyncProducerWrapper 내부의 default_value_serializer에서 처리
+# NOTE: 직렬화는 Producer 타입에 따라 자동 처리
+# - AvroProducerWrapper: Avro 스키마 기반 직렬화
+# - JsonProducerWrapper: orjson 기반 JSON 직렬화
 KeyType = str | bytes | None
+BatchType = list[TickerResponseData | OrderbookResponseData | TradeResponseData]
 
 
 class AvroProducer:
     """
-    AvroProducer
-    - 카프카 전송 전용 클라이언트
-    - Avro 직렬화 지원 (선택적)
+    통합 Producer 클라이언트
+    - use_avro=True: AvroProducerWrapper 사용 (Avro 직렬화)
+    - use_avro=False: JsonProducerWrapper 사용 (orjson 직렬화)
+    - 동일한 인터페이스로 두 가지 Producer 지원
     """
 
-    def __init__(self, use_avro: bool = False):
-        # confluent-kafka 기반 AsyncProducerWrapper
-        self.producer: AsyncProducerWrapper | None = None
+    def __init__(self, use_avro: bool = False) -> None:
+        self._use_avro: bool = use_avro
         self.producer_started: bool = False
 
-        # Avro 직렬화 관련 (선택적)
-        self._avro_serializer: Any = None
-        self._use_avro: bool = use_avro
-        self._avro_initialized: bool = False
+        # Producer 타입에 따른 인스턴스 (Union 타입)
+        self.producer: AvroProducerWrapper | JsonProducerWrapper | None = None
+
+        # Avro 전용 설정 (use_avro=True일 때만 사용)
         self._avro_subject: str | None = None
 
     # 실행할 비동기 함수, 예: self.producer.start 또는 self.producer.stop
@@ -59,13 +69,13 @@ class AvroProducer:
         return True
 
     async def start_producer(self) -> bool:
-        """confluent-kafka Producer 시작 및 재사용
+        """Producer 시작 - Avro/JSON 타입에 따라 적절한 Producer 사용
 
-        - confluent-kafka 기반 AsyncProducerWrapper 사용
-        - 고성능 C 라이브러리 기반 처리
-        - 기본 파티셔닝 정책 사용 (성능 최적화)
+        - use_avro=True: AvroProducerWrapper (Avro 직렬화)
+        - use_avro=False: JsonProducerWrapper (orjson 직렬화)
+        - 동일한 인터페이스로 통일된 사용법 제공
         """
-        # 이벤트 루프 가드: 종료 중이거나 루프가 없으면 시작을 시도하지 않음
+        # 이벤트 루프 가드
         try:
             loop = asyncio.get_running_loop()
             if loop.is_closed():
@@ -74,23 +84,32 @@ class AvroProducer:
         except RuntimeError:
             logger.warning("Kafka Producer start skipped: no running event loop")
             return False
+
         # 이미 시작되어 있으면 바로 True 반환(멱등성 보장)
         if self.producer_started and self.producer is not None:
             return True
 
-        # confluent-kafka 기반 프로듀서 생성
+        # Producer 타입에 따른 인스턴스 생성
         if self.producer is None:
-            # AsyncProducerWrapper: confluent-kafka Producer의 비동기 래퍼
-            # - C 라이브러리 기반 고성능 처리
-            # - 내장 직렬화: default_value_serializer (JSON)
-            # - 배치 처리 및 압축 최적화 적용
-            self.producer = create_producer()
+            if self._use_avro:
+                # Avro Producer: 스키마 기반 직렬화
+                if not self._avro_subject:
+                    raise ValueError("Avro subject must be set when use_avro=True")
+                self.producer = create_avro_producer(value_subject=self._avro_subject)
+                logger.info(
+                    f"AvroProducerWrapper created with subject: {self._avro_subject}"
+                )
+            else:
+                # JSON Producer: orjson 기반 고성능 직렬화
+                self.producer = create_json_producer()
+                logger.info("JsonProducerWrapper created with orjson serialization")
 
-        # 헬퍼 메서드를 통해 시작 시도
+        # Producer 시작
         result: bool = await self._execute_with_logging(action=self.producer.start)
         if result:
             self.producer_started = True
-            logger.info("Kafka Producer started")
+            producer_type = "Avro" if self._use_avro else "JSON"
+            logger.info(f"Kafka {producer_type} Producer started")
         return result
 
     async def stop_producer(self) -> None:
@@ -101,53 +120,44 @@ class AvroProducer:
             logger.info("Kafka Producer stopped")
 
     def enable_avro(self, subject: str) -> None:
-        """Avro 직렬화 활성화"""
+        """Avro 직렬화 활성화 - Producer 재생성 필요"""
+        if self.producer_started:
+            raise RuntimeError(
+                "Cannot change producer type while running. Stop producer first."
+            )
         self._use_avro = True
         self._avro_subject = subject
+        self.producer = None  # 기존 Producer 무효화
         logger.info(f"Avro serialization enabled for subject: {subject}")
 
     def disable_avro(self) -> None:
-        """Avro 직렬화 비활성화"""
+        """Avro 직렬화 비활성화 - Producer 재생성 필요"""
+        if self.producer_started:
+            raise RuntimeError(
+                "Cannot change producer type while running. Stop producer first."
+            )
         self._use_avro = False
         self._avro_subject = None
-        logger.info("Avro serialization disabled")
+        self.producer = None  # 기존 Producer 무효화
+        logger.info("Avro serialization disabled, switching to JSON")
 
-    async def _ensure_avro_serializer(self) -> None:
-        """Avro 직렬화기 초기화 (지연 로딩)"""
-        if self._avro_initialized or not self._use_avro or not self._avro_subject:
-            return
+    def get_producer_type(self) -> str:
+        """현재 Producer 타입 반환"""
+        if self._use_avro:
+            return f"AvroProducer(subject={self._avro_subject})"
+        else:
+            return "JsonProducer(orjson)"
 
-        try:
-            # Schema Registry 클라이언트 생성
-            schema_registry_client = SchemaRegistryClient(
-                base_url="http://localhost:8082"
-            )
-
-            # Avro 직렬화기 생성 (자동 초기화 포함)
-            self._avro_serializer = create_avro_serializer(
-                schema_registry_client=schema_registry_client,
-                subject=self._avro_subject,
-            )
-
-            # 스키마 초기화
-            await self._avro_serializer.ensure_schema()
-
-            self._avro_initialized = True
-            logger.info(
-                f"Avro serializer initialized for subject: {self._avro_subject}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to initialize Avro serializer: {e}")
-            self._use_avro = False
-
-    def get_avro_status(self) -> dict[str, Any]:
-        """Avro 상태 조회 (모니터링용)"""
+    def get_producer_status(self) -> dict[str, Any]:
+        """Producer 상태 조회 (모니터링용)"""
         return {
-            "avro_enabled": self._use_avro,
-            "avro_initialized": self._avro_initialized,
+            "use_avro": self._use_avro,
             "avro_subject": self._avro_subject,
-            "serializer_available": self._avro_serializer is not None,
+            "producer_started": self.producer_started,
+            "producer_type": self.get_producer_type(),
+            "producer_instance": (
+                type(self.producer).__name__ if self.producer else None
+            ),
         }
 
     async def produce_sending(
@@ -159,52 +169,19 @@ class AvroProducer:
         *,
         stop_after_send: bool = True,
     ) -> bool:
-        """confluent-kafka 기반 메시지 전송 공통 루틴.
+        """통합 메시지 전송 루틴 - Avro/JSON Producer 자동 선택.
 
+        - use_avro=True: AvroProducerWrapper 사용 (스키마 기반)
+        - use_avro=False: JsonProducerWrapper 사용 (orjson 기반)
         - Pydantic BaseModel → dict 변환 후 전송
-        - Avro 직렬화 지원 (선택적)
-        - confluent-kafka의 고성능 C 라이브러리 활용
-        - 배치 처리, 압축, 재시도 로직 내장
+        - 동일한 인터페이스로 통일된 사용법
         """
         try:
             # Pydantic 모델을 dict로 변환
             if isinstance(message, BaseModel):
                 message = message.model_dump()
 
-            # Avro 직렬화 시도 (활성화된 경우)
-            if self._use_avro:
-                try:
-                    await self._ensure_avro_serializer()
-                    if self._avro_serializer:
-                        # Avro로 직렬화 (CPU 오프로드)
-                        serialized_data = await self._avro_serializer.serialize_async(
-                            message
-                        )
-
-                        started = await self.start_producer()
-                        if not started:
-                            logger.warning(
-                                f"Kafka Producer not started; skipping send to topic '{topic}'"
-                            )
-                            return False
-
-                        # Avro 직렬화된 바이트 데이터 전송 (AsyncProducerWrapper가 바이트 감지)
-                        await self.producer.send_and_wait(
-                            topic=topic,
-                            value=serialized_data,  # bytes 타입
-                            key=key,
-                        )
-                        logger.debug(f"Avro message sent to topic: {topic}")
-                        return True
-
-                except Exception as e:
-                    logger.warning(
-                        f"Avro serialization failed, falling back to JSON: {e}"
-                    )
-                    # Avro 실패 시 JSON으로 폴백
-                    self._use_avro = False
-
-            # JSON 직렬화 (기본 방식 또는 Avro 실패 시 폴백)
+            # Producer 시작
             started = await self.start_producer()
             if not started:
                 logger.warning(
@@ -212,14 +189,30 @@ class AvroProducer:
                 )
                 return False
 
+            # 재시도 로직
             attempt = 1
             while attempt <= retries:
-                await self.producer.send_and_wait(
-                    topic=topic,
-                    value=message,
-                    key=key,
-                )
-                return True  # 성공 시 즉시 반환
+                try:
+                    await self.producer.send_and_wait(
+                        topic=topic,
+                        value=message,
+                        key=key,
+                    )
+                    producer_type = "Avro" if self._use_avro else "JSON"
+                    logger.debug(f"{producer_type} message sent to topic: {topic}")
+                    return True  # 성공 시 즉시 반환
+
+                except Exception as e:
+                    if attempt < retries:
+                        logger.warning(f"Send attempt {attempt} failed, retrying: {e}")
+                        attempt += 1
+                        await asyncio.sleep(0.1 * attempt)  # 지수 백오프
+                    else:
+                        logger.error(f"All {retries} send attempts failed: {e}")
+                        raise
+
+            return False  # 모든 재시도 실패
+
         finally:
             if stop_after_send:
                 await self.stop_producer()
@@ -227,11 +220,12 @@ class AvroProducer:
 
 class ConnectRequestProducer(AvroProducer):
     """
-    confluent-kafka 기반 연결 요청 프로듀서.
+    통합 연결 요청 프로듀서 (리팩토링됨).
 
     - ws.command 토픽으로 웹소켓 연결 요청 전송
-    - 고성능 C 라이브러리 기반 처리
-    - JSON 직렬화 및 배치 최적화 적용
+    - use_avro=True: AvroProducerWrapper (스키마 기반)
+    - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
+    - 부모 클래스 기반 고성능 비동기 처리
     """
 
     def __init__(self, topic: str = "ws.command") -> None:
@@ -248,17 +242,19 @@ class ConnectRequestProducer(AvroProducer):
 
 class ErrorEventProducer(AvroProducer):
     """
-    confluent-kafka 기반 에러 이벤트 프로듀서.
+    통합 에러 이벤트 프로듀서 (리팩토링됨).
 
     - ws.error 토픽으로 웹소켓/데이터 에러 전송
     - 실시간 에러 모니터링 및 디버깅 지원
-    - 고성능 비동기 전송 및 배치 처리
+    - use_avro=True: AvroProducerWrapper (error-events-value 스키마)
+    - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
+    - 부모 클래스 기반 고성능 비동기 전송 및 배치 처리
     """
 
     async def send_error_event(
         self, event: WsErrorEventDTO, key: KeyType = None
     ) -> bool:
-        await self.produce_sending(
+        return await self.produce_sending(
             message=event,
             topic="ws.error",
             key=key,
@@ -267,11 +263,14 @@ class ErrorEventProducer(AvroProducer):
 
 class DlqProducer(AvroProducer):
     """
-    confluent-kafka 기반 Dead Letter Queue 프로듀서.
+    통합 Dead Letter Queue 프로듀서 (리팩토링됨).
 
     - ws.dlq 토픽으로 처리 실패 메시지 전송
     - 원본 메시지 + 실패 사유 포함
     - 장애 분석 및 데이터 복구를 위한 안전망
+    - use_avro=True: AvroProducerWrapper (dlq-events-value 스키마)
+    - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
+    - 부모 클래스 기반 고성능 비동기 처리
     """
 
     async def send_dlq_event(self, event: DlqEventDTO, key: KeyType = None) -> None:
@@ -288,12 +287,14 @@ class DlqProducer(AvroProducer):
 
 class MetricsProducer(AvroProducer):
     """
-    confluent-kafka 기반 메트릭 배치 프로듀서 (Avro 직렬화 지원).
+    통합 메트릭 배치 프로듀서 (리팩토링됨, Avro 직렬화 우선).
 
     - 지역별 토픽으로 실시간 메트릭 전송: ws.counting.message.{region}
     - 분 단위 메시지 카운팅 및 집계 데이터
     - 성능 모니터링 및 비즈니스 인사이트 제공
-    - Avro 스키마: metrics-events-value
+    - use_avro=True: AvroProducerWrapper (metrics-events-value 스키마) - 기본값
+    - use_avro=False: JsonProducerWrapper (orjson 기반)
+    - 부모 클래스 기반 고성능 비동기 처리
     """
 
     def __init__(self, use_avro: bool = True):
@@ -354,11 +355,13 @@ class MetricsProducer(AvroProducer):
 
 
 class ConnectSuccessEventProducer(AvroProducer):
-    """연결 성공 ACK 이벤트 프로듀서 (Avro 직렬화 지원).
+    """통합 연결 성공 ACK 이벤트 프로듀서 (리팩토링됨, Avro 직렬화 우선).
 
     - 지역별 토픽에 발행: ws.connect_success.{region}
     - 키 포맷: "{exchange}|{region}|{request_type}|{coin_symbol}"
-    - Avro 스키마: connect-success-events-value
+    - use_avro=True: AvroProducerWrapper (connect-success-events-value 스키마) - 기본값
+    - use_avro=False: JsonProducerWrapper (orjson 기반)
+    - 부모 클래스 기반 고성능 비동기 처리
     """
 
     def __init__(self, use_avro: bool = True):
@@ -379,7 +382,7 @@ class ConnectSuccessEventProducer(AvroProducer):
 
 
 class RealtimeDataProducer(AvroProducer):
-    """실시간 데이터 배치 프로듀서 (Avro 직렬화 지원)
+    """통합 실시간 데이터 배치 프로듀서 (리팩토링됨, Avro 직렬화 우선)
 
     토픽 전략:
     - ticker-data.{region}
@@ -387,7 +390,10 @@ class RealtimeDataProducer(AvroProducer):
     - trade-data.{region}
 
     성능 최적화:
-    - Avro 직렬화로 20-40% 메시지 크기 감소 (선택적)
+    - use_avro=True: AvroProducerWrapper (ticker/orderbook/trade-data-value 스키마) - 기본값
+    - use_avro=False: JsonProducerWrapper (orjson 기반, 3-5배 빠름)
+    - 부모 클래스 기반 고성능 비동기 처리
+    - Avro 직렬화로 20-40% 메시지 크기 감소
     - asyncio.to_thread() CPU 오프로드
     - 스키마 진화 자동 처리
     """
@@ -412,67 +418,15 @@ class RealtimeDataProducer(AvroProducer):
             "data": batch,  # 표준 스키마의 TickerMessage 배열
         }
 
-    async def send_ticker_batch(
-        self, scope: ConnectionScopeDomain, batch: list[TickerResponseData]
-    ) -> bool:
-        """티커 데이터 배치 전송 (Avro 직렬화 자동 지원)"""
-        topic = f"ticker-data.{scope.region}"
-
-        # Avro 형식으로 변환 (기본 클래스에서 자동 처리)
-        message = self._convert_to_avro_format(scope, batch)
-
-        return await self.produce_sending(
-            message=message,
-            topic=topic,
-            key=f"{scope.exchange}:{scope.region}:ticker",
-            stop_after_send=False,
-        )
-
-    async def send_orderbook_batch(
-        self, scope: ConnectionScopeDomain, batch: list[OrderbookResponseData]
-    ) -> bool:
-        """오더북 데이터 배치 전송"""
-        topic = f"orderbook-data.{scope.region}"
-
-        # 표준 형식으로 변환
-        message = self._convert_to_avro_format(scope, batch)
-
-        return await self.produce_sending(
-            message=message,
-            topic=topic,
-            key=f"{scope.exchange}:{scope.region}:orderbook",
-            stop_after_send=False,
-        )
-
-    async def send_trade_batch(
-        self, scope: ConnectionScopeDomain, batch: list[TradeResponseData]
-    ) -> bool:
-        """체결 데이터 배치 전송"""
-        topic = f"trade-data.{scope.region}"
-
-        # 표준 형식으로 변환
-        message = self._convert_to_avro_format(scope, batch)
-
-        return await self.produce_sending(
-            message=message,
-            topic=topic,
-            key=f"{scope.exchange}:{scope.region}:trade",
-            stop_after_send=False,
-        )
-
-    async def send_batch_by_type(
-        self,
-        scope: ConnectionScopeDomain,
-        message_type: str,
-        batch: list[dict[str, Any]],
-    ) -> bool:
+    async def send_batch(self, scope: ConnectionScopeDomain, batch: BatchType) -> bool:
         """타입별 배치 전송 통합 메서드 (Avro 지원)"""
-        if message_type == "ticker":
-            return await self.send_ticker_batch(scope, batch)  # type: ignore[arg-type]
-        elif message_type == "orderbook":
-            return await self.send_orderbook_batch(scope, batch)  # type: ignore[arg-type]
-        elif message_type == "trade":
-            return await self.send_trade_batch(scope, batch)  # type: ignore[arg-type]
-        else:
-            logger.warning(f"Unknown message type: {message_type}")
-            return False
+        topic = f"{scope.request_type}-data.{scope.region}"
+        key = f"{scope.exchange}:{scope.region}:{scope.request_type}"
+
+        message = self._convert_to_avro_format(scope, batch)
+        return await self.produce_sending(
+            message=message,
+            topic=topic,
+            key=key,
+            stop_after_send=False,
+        )

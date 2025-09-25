@@ -11,38 +11,17 @@ Avro 직렬화/역직렬화 및 Schema Registry 지원 모듈
 """
 
 from src.infra.messaging.avro.serializers import (
-    AvroSerializer,
-    AvroDeserializer,
+    AsyncAvroSerializer,
+    AsyncAvroDeserializer,
     create_avro_serializer,
     create_avro_deserializer,
 )
-from src.infra.messaging.avro.schema_registry import (
-    SchemaRegistryClient,
-    SchemaRegistryError,
-    SchemaNotFoundError,
-    SchemaCompatibilityError,
-)
-from src.infra.messaging.avro.clients import (
-    create_avro_producer,
-    create_avro_consumer,
-    AvroProducerWrapper,
-    AvroConsumerWrapper,
-)
+
 
 __all__ = [
     # Serializers
-    "AvroSerializer",
-    "AvroDeserializer",
+    "AsyncAvroSerializer",
+    "AsyncAvroDeserializer",
     "create_avro_serializer",
     "create_avro_deserializer",
-    # Schema Registry
-    "SchemaRegistryClient",
-    "SchemaRegistryError",
-    "SchemaNotFoundError",
-    "SchemaCompatibilityError",
-    # Clients
-    "create_avro_producer",
-    "create_avro_consumer",
-    "AvroProducerWrapper",
-    "AvroConsumerWrapper",
 ]
