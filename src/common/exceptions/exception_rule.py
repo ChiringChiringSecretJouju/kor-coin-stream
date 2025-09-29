@@ -2,20 +2,28 @@ from __future__ import annotations
 
 import asyncio
 from typing import TypeAlias
+
+from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 from pydantic import ValidationError
 from redis.exceptions import (
     AuthenticationError as RedisAuthenticationError,
+)
+from redis.exceptions import (
     ConnectionError as RedisConnectionError,
+)
+from redis.exceptions import (
     DataError as RedisDataError,
+)
+from redis.exceptions import (
     ResponseError as RedisResponseError,
+)
+from redis.exceptions import (
     TimeoutError as RedisTimeoutError,
 )
 from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
-from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
 
 from src.core.dto.internal.common import RuleDomain
-from src.core.types import ErrorCode, ErrorDomain, ErrorCategory
-
+from src.core.types import ErrorCategory, ErrorCode, ErrorDomain
 
 # Kafka
 KafkaException = (

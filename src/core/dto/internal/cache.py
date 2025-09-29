@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.types import ConnectionStatus

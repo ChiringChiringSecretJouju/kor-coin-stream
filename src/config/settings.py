@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 env_prefix = Path(__file__).parent.parent / "config"
 

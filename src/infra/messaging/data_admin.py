@@ -4,6 +4,7 @@ KAKFA NEW TOPIC CREATE
 
 from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka.error import KafkaError, KafkaException, ProduceError
+
 from src.config.settings import kafka_settings
 
 
@@ -22,7 +23,7 @@ def new_topic_initialization(
 
     new_topics = [
         NewTopic(topic, num_partitions=partition, replication_factor=replication)
-        for topic, partition, replication in zip(topic, partition, replication)
+        for topic, partition, replication in zip(topic, partition, replication, strict=False)
     ]
     create_topic = admin_clinet.create_topics(new_topics=new_topics)
 

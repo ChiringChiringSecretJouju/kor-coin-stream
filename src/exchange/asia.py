@@ -1,9 +1,11 @@
-from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
-from src.core.types import TickerResponseData
-from typing import Any, override
 import gzip
+from typing import Any, override
+
 import orjson
+
+from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
 from src.core.connection.utils.parse import preprocess_ticker_message, update_dict
+from src.core.types import TickerResponseData
 
 
 class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):

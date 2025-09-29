@@ -4,9 +4,8 @@ from typing import Any
 
 import pytest
 
-from infra.messaging.connect.services.command_validator import GenericValidator
 from core.dto.io.commands import CommandDTO
-
+from infra.messaging.connect.services.command_validator import GenericValidator
 
 # promting/event.json 형식과 CommandDTO 스키마를 반영한 유효 페이로드
 VALID_PAYLOAD: dict[str, Any] = {

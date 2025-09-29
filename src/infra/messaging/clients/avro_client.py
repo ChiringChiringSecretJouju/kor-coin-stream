@@ -6,20 +6,21 @@ BaseAvroHandler를 기반으로 한 고성능 Avro Producer/Consumer 래퍼입�
 """
 
 import asyncio
-from typing import Any
 from dataclasses import dataclass, field
+from typing import Any
+
 from pydantic import BaseModel, TypeAdapter
 
-from src.infra.messaging.clients.cb.base import AsyncProducerBase, AsyncConsumerBase
-from src.infra.messaging.clients.cb.config import (
-    avro_producer_config,
-    avro_consumer_config,
-)
 from src.infra.messaging.avro.serializers import (
-    AsyncAvroSerializer,
     AsyncAvroDeserializer,
-    create_avro_serializer,
+    AsyncAvroSerializer,
     create_avro_deserializer,
+    create_avro_serializer,
+)
+from src.infra.messaging.clients.cb.base import AsyncConsumerBase, AsyncProducerBase
+from src.infra.messaging.clients.cb.config import (
+    avro_consumer_config,
+    avro_producer_config,
 )
 
 

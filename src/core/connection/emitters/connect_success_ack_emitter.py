@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Iterable
 
 from src.common.logger import PipelineLogger
+from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.commands import ConnectSuccessEventDTO, ConnectSuccessMetaDTO
 from src.core.dto.io.target import ConnectionTargetDTO
 from src.infra.messaging.connect.producer_client import ConnectSuccessEventProducer
-from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 
 logger = PipelineLogger.get_logger("ack_emitter", "connection")
 

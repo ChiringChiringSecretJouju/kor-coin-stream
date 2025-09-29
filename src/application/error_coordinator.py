@@ -8,9 +8,9 @@
 from __future__ import annotations
 
 from src.common.logger import PipelineLogger
+from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.target import ConnectionTargetDTO
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 
 logger = PipelineLogger.get_logger("error_coordinator", "app")
 

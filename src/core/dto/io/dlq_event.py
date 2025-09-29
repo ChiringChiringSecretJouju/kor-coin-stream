@@ -1,5 +1,6 @@
-from typing import Literal
 from datetime import datetime, timezone
+from typing import Literal
+
 from pydantic import Field
 
 from src.core.dto.io._base import BaseIOModelDTO

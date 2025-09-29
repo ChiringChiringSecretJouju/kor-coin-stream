@@ -5,10 +5,9 @@ import time
 from typing import Any, Literal
 
 from src.common.logger import PipelineLogger
+from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
 from src.core.dto.io.target import ConnectionTargetDTO
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
-
 
 logger = PipelineLogger.get_logger("health_monitor", "connection")
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable
 import uuid
+from typing import Any, Callable
 
 from pydantic import BaseModel
 
@@ -17,19 +17,20 @@ from src.core.dto.io.counting import CountingBatchDTO, MarketCountingDTO
 from src.core.dto.io.dlq_event import DlqEventDTO
 from src.core.dto.io.error_event import WsErrorEventDTO
 from src.core.types import (
-    TickerResponseData,
     OrderbookResponseData,
+    TickerResponseData,
     TradeResponseData,
+)
+from src.infra.messaging.clients.avro_client import (
+    AvroProducerWrapper,
+    create_avro_producer,
+)
+from src.infra.messaging.clients.json_client import (
+    AsyncProducerWrapper as JsonProducerWrapper,
 )
 from src.infra.messaging.clients.json_client import (
     create_producer as create_json_producer,
-    AsyncProducerWrapper as JsonProducerWrapper,
 )
-from src.infra.messaging.clients.avro_client import (
-    create_avro_producer,
-    AvroProducerWrapper,
-)
-
 
 # NOTE: Any 사용 사유
 # - 프로듀서 계층은 외부 전송 경계로, 스키마 확장(필드 추가)과 다양한 이벤트 페이로드를 수용해야 함
@@ -318,7 +319,7 @@ class MetricsProducer(AvroProducer):
     ) -> bool:
         # MinuteItem -> dict 직렬화 (프로토콜 경계에서 수행)
         # NOTE: dict[str, Any] 사용 사유
-        # - MinuteItem을 프로듀서 경계에서 표준 dict로 직렬화하여 외부 시스템(Kafka/Schema) 호환성 확보
+        # - MinuteItem을 프로듀서 경계에서 표준 dict로 직렬화하여 외부 시스템(Kafka/Schema) 호환성
         items_dicts: list[dict[str, int | dict[str, int]]] = [
             {
                 "minute_start_ts_kst": it.minute_start_ts_kst,
@@ -343,7 +344,7 @@ class MetricsProducer(AvroProducer):
             ),
         )
 
-        # 지역별 토픽으로 라우팅 (부작용 최소화: 기존 기본값은 korea였으나, 여기서 동적으로 region 사용)
+        # 지역별 토픽으로 라우팅 (부작용 최소화: 기존 기본값은 korea였으나, 여기서 동적으로 region)
         topic_to_use = f"ws.counting.message.{scope.region}"
 
         return await self.produce_sending(

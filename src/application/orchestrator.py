@@ -11,20 +11,26 @@ import asyncio
 from datetime import datetime
 from typing import Final, TypeAlias
 
+# 새로운 컴포넌트들
+from src.application.connection_registry import ConnectionRegistry
+from src.application.error_coordinator import ErrorCoordinator
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.cache import WebsocketConnectionSpecDomain
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.orchestrator import StreamContextDomain
-from src.core.types import (
-    SocketParams,
-    CONNECTION_STATUS_DISCONNECTED,
-    CONNECTION_STATUS_CONNECTED,
-)
 from src.core.dto.io.target import ConnectionTargetDTO
-
-# 새로운 컴포넌트들
-from src.application.connection_registry import ConnectionRegistry
-from src.application.error_coordinator import ErrorCoordinator
+from src.core.types import (
+    CONNECTION_STATUS_CONNECTED,
+    CONNECTION_STATUS_DISCONNECTED,
+    SocketParams,
+)
+from src.exchange.asia import (
+    BinanceWebsocketHandler,
+    BybitWebsocketHandler,
+    HuobiWebsocketHandler,
+    OKXWebsocketHandler,
+)
+from src.exchange.europe import BitfinexWebsocketHandler
 
 # 기존 컴포넌트들 (이미 잘 분리됨)
 from src.exchange.korea import (
@@ -33,14 +39,7 @@ from src.exchange.korea import (
     KorbitWebsocketHandler,
     UpbitWebsocketHandler,
 )
-from src.exchange.europe import BitfinexWebsocketHandler
-from src.exchange.na import KrakenWebsocketHandler, CoinbaseWebsocketHandler
-from src.exchange.asia import (
-    BinanceWebsocketHandler,
-    BybitWebsocketHandler,
-    OKXWebsocketHandler,
-    HuobiWebsocketHandler,
-)
+from src.exchange.na import CoinbaseWebsocketHandler, KrakenWebsocketHandler
 from src.infra.cache.cache_store import WebsocketConnectionCache
 
 logger = PipelineLogger.get_logger("orchestrator_refactored", "app")

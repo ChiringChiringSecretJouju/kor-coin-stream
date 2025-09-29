@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import cProfile
 import functools
-import pstats
 import time
 from pathlib import Path
 from typing import Any, Callable, TypeVar

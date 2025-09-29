@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
 
-from infra.cache.cache_store import WebsocketConnectionCache
 from core.dto.internal.cache import (
     ConnectionKeyBuilderDomain,
     WebsocketConnectionSpecDomain,
 )
 from core.dto.internal.common import ConnectionScopeDomain
-from core.types import CONNECTION_STATUS_CONNECTING, CONNECTION_STATUS_CONNECTED
+from core.types import CONNECTION_STATUS_CONNECTED, CONNECTION_STATUS_CONNECTING
 from infra.cache.cache_client import RedisConnectionManager
+from infra.cache.cache_store import WebsocketConnectionCache
 
 
 class FakeRedis:

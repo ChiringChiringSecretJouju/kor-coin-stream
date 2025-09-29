@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Final, Literal, TypeAlias, assert_never
 from enum import Enum
+from typing import Any, Final, Literal, TypeAlias, assert_never
 
 DEFAULT_SCHEMA_VERSION: Final[str] = "1.0"
 

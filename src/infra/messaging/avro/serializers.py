@@ -8,7 +8,6 @@ Schema Registry와 연동하여 스키마 진화를 지원합니다.
 from __future__ import annotations
 
 import asyncio
-from functools import lru_cache
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,13 +15,15 @@ from confluent_kafka.schema_registry import (
     AsyncSchemaRegistryClient,
 )
 from confluent_kafka.schema_registry.avro import (
-    AsyncAvroSerializer as ConfluentAsyncAvroSerializer,
     AsyncAvroDeserializer as ConfluentAsyncAvroDeserializer,
+)
+from confluent_kafka.schema_registry.avro import (
+    AsyncAvroSerializer as ConfluentAsyncAvroSerializer,
 )
 
 from src.common.logger import PipelineLogger
-from src.infra.messaging.avro.utils.serde_utiles import create_value_context
 from src.config.settings import KafkaSettings
+from src.infra.messaging.avro.utils.serde_utiles import create_value_context
 
 logger = PipelineLogger.get_logger("avro_serializers", "avro")
 

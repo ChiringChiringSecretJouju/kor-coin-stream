@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 
 import orjson
 
 from src.common.logger import PipelineLogger
 from src.config.settings import websocket_settings
+from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
 from src.core.connection.utils.parse import update_dict
-from src.core.connection._utils import extract_symbol as _extract_symbol_impl
-from src.infra.messaging.connect.producer_client import RealtimeDataProducer
 from src.core.types import (
-    TickerResponseData,
-    OrderbookResponseData,
-    TradeResponseData,
     MessageHandler,
+    OrderbookResponseData,
+    TickerResponseData,
+    TradeResponseData,
 )
+from src.infra.messaging.connect.producer_client import RealtimeDataProducer
 
 logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
@@ -236,7 +235,10 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             )
         else:
             logger.warning(
-                f"{self.scope.exchange}: Batch collection disabled or not initialized (enabled={self._batch_enabled}, collector={self._batch_collector is not None})"
+                f"""
+                {self.scope.exchange}: Batch collection disabled or not initialized
+                (enabled={self._batch_enabled}, collector={self._batch_collector is not None})
+                """
             )
 
         return filtered_message
@@ -253,7 +255,10 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
 
         # 글로벌 거래소 공통 응답 처리
         logger.debug(
-            f"{self.scope.exchange}: orderbook_message received, keys={list(parsed_message.keys()) if isinstance(parsed_message, dict) else 'not_dict'}"
+            f"""
+            {self.scope.exchange}: orderbook_message received, 
+            keys={list(parsed_message.keys()) if isinstance(parsed_message, dict) else 'not_dict'}
+            """
         )
 
         if parsed_message.get("result") is not None:
@@ -310,7 +315,10 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
 
         # 글로벌 거래소 공통 응답 처리
         logger.debug(
-            f"{self.scope.exchange}: trade_message received, keys={list(parsed_message.keys()) if isinstance(parsed_message, dict) else 'not_dict'}"
+            f"""
+            {self.scope.exchange}: trade_message received, 
+            keys={list(parsed_message.keys()) if isinstance(parsed_message, dict) else 'not_dict'}
+            """
         )
 
         if parsed_message.get("result") is not None:

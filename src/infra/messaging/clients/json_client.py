@@ -5,15 +5,16 @@ JSON 기반 Kafka 클라이언트
 orjson을 사용하여 3-5배 빠른 JSON 처리 성능을 제공합니다.
 """
 
-import orjson
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from dataclasses import dataclass
 
-from src.infra.messaging.clients.cb.base import AsyncProducerBase, AsyncConsumerBase
+import orjson
+
+from src.infra.messaging.clients.cb.base import AsyncConsumerBase, AsyncProducerBase
 from src.infra.messaging.clients.cb.config import (
-    json_producer_config,
     json_consumer_config,
+    json_producer_config,
 )
 from src.infra.messaging.serializers.unified_serializer import (
     create_unified_serializers,

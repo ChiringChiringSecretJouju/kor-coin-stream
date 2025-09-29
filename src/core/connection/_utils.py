@@ -1,4 +1,5 @@
 from typing import Any
+
 from src.common.logger import PipelineLogger
 
 logger = PipelineLogger.get_logger("symbol_extractor", "utils")

@@ -7,8 +7,8 @@ confluent-kafka 형식으로 변환하는 공통 함수들을 제공합니다.
 
 from typing import Any
 
-from src.core.dto.internal.mq import ProducerConfigDomain, ConsumerConfigDomain
 from src.config.settings import kafka_settings
+from src.core.dto.internal.mq import ConsumerConfigDomain, ProducerConfigDomain
 
 
 def producer_config(**overrides: Any) -> dict[str, Any]:

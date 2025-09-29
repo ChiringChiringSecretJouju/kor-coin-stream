@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Tuple
 
 import pytest
@@ -8,7 +7,7 @@ import pytest
 from core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from core.dto.internal.common import ConnectionScopeDomain
 from core.dto.io.error_event import WsErrorEventDTO
-from core.types import ErrorDomain, ErrorCode, DEFAULT_SCHEMA_VERSION
+from core.types import DEFAULT_SCHEMA_VERSION, ErrorCode, ErrorDomain
 
 
 @pytest.mark.asyncio

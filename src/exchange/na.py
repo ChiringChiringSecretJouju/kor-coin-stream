@@ -1,7 +1,8 @@
-from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
-from src.core.types import TickerResponseData
-from src.core.connection.utils.parse import preprocess_ticker_message
 from typing import Any, override
+
+from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
+from src.core.connection.utils.parse import preprocess_ticker_message
+from src.core.types import TickerResponseData
 
 
 class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):

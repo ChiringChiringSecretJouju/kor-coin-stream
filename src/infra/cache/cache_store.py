@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+
 from redis.asyncio import Redis
 
 from src.common.logger import PipelineLogger
@@ -256,7 +257,10 @@ class WebsocketConnectionCache:
                 actual_ttl,
             )
             logger.info(
-                f"연결 상태 업데이트: {self.exchange}/{self.region}/{self.request_type}, 상태={connection_status_format(status)}"
+                f"""
+                연결 상태 업데이트: {self.exchange}/{self.region}/{self.request_type},
+                상태={connection_status_format(status)}
+                """
             )
             return True
         except Exception as e:

@@ -5,17 +5,15 @@ from typing import Any
 
 import orjson
 
-
 from src.common.logger import PipelineLogger
+from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.subscription import (
-    SymbolMergeResultDomain,
     SubscriptionStateDomain,
+    SymbolMergeResultDomain,
 )
-from src.core.types import SocketParams
 from src.core.dto.io.target import ConnectionTargetDTO
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
-
+from src.core.types import SocketParams
 
 logger = PipelineLogger.get_logger("subscription_manager", "connection")
 
@@ -95,7 +93,9 @@ class SubscriptionManager:
         # 신규가 없으면 전송 생략
         if before_set >= add_set:
             logger.info(
-                f"{self.scope.exchange}: 추가할 신규 심볼 없음 - 재구독 생략 ({len(before_set)} 유지)"
+                f"""
+                {self.scope.exchange}: 추가할 신규 심볼 없음 - 재구독 생략 ({len(before_set)} 유지)
+                """
             )
             return SymbolMergeResultDomain(
                 merged_params=None,
@@ -177,7 +177,10 @@ class SubscriptionManager:
                 )
 
                 logger.info(
-                    f"{self.scope.exchange}: 재구독 메시지 전송 완료 -> now {merge_result.total_symbols} symbols"
+                    f"""
+                    {self.scope.exchange}: 재구독 메시지 전송 완료 -> 
+                    now {merge_result.total_symbols} symbols
+                    """
                 )
                 return True
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from redis.exceptions import RedisError
+
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.cache import WebsocketConnectionSpecDomain
 from src.core.dto.internal.common import ConnectionScopeDomain
@@ -11,7 +13,6 @@ from src.core.types import (
     CONNECTION_STATUS_CONNECTING,
 )
 from src.infra.cache.cache_store import WebsocketConnectionCache
-from redis.exceptions import RedisError
 
 logger: Final = PipelineLogger.get_logger("consumer", "cache_coordinator")
 

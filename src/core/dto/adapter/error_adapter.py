@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import uuid
 import traceback
+import uuid
 from datetime import datetime
 from typing import Any
+
+from src.common.exceptions.exception_rule import classify_exception
 from src.core.dto.io.error_event import (
     WsErrorEventDTO,
     WsEventErrorMetaDTO,
@@ -11,7 +13,6 @@ from src.core.dto.io.error_event import (
 )
 from src.core.dto.io.target import ConnectionTargetDTO
 from src.core.types import DEFAULT_SCHEMA_VERSION, ErrorCode, ErrorDomain
-from src.common.exceptions.exception_rule import classify_exception
 from src.infra.messaging.connect.producer_client import ErrorEventProducer
 
 

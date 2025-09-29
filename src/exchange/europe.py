@@ -1,7 +1,8 @@
+from dataclasses import dataclass
+from typing import Any, override
+
 from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
 from src.core.types import TickerResponseData
-from typing import Any, override
-from dataclasses import dataclass
 
 
 @dataclass(slots=True, frozen=True)

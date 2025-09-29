@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from pydantic import field_validator
-from src.core.dto.io._base import BaseIOModelDTO
 
+from src.core.dto.io._base import BaseIOModelDTO
 from src.core.types import ConnectionStatus, ExchangeName, Region, RequestType
 
 

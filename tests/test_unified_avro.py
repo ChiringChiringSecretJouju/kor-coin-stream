@@ -7,9 +7,14 @@ KafkaProducerClient 기본 클래스의 Avro 직렬화 기능 테스트
 
 import asyncio
 import time
-from src.infra.messaging.connect.producer_client import RealtimeDataProducer, MetricsProducer, ConnectSuccessEventProducer
-from src.core.dto.internal.common import ConnectionScopeDomain
+
 from src.common.logger import PipelineLogger
+from src.core.dto.internal.common import ConnectionScopeDomain
+from src.infra.messaging.connect.producer_client import (
+    ConnectSuccessEventProducer,
+    MetricsProducer,
+    RealtimeDataProducer,
+)
 
 logger = PipelineLogger.get_logger("unified_avro_test", "main")
 

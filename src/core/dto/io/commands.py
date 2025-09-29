@@ -1,11 +1,14 @@
 from __future__ import annotations
-from typing import Any, Literal, Annotated
-from pydantic import ConfigDict, Field, StringConstraints, StrictStr
+
 import uuid
+from datetime import datetime, timezone
+from typing import Annotated, Any, Literal
+
+from pydantic import ConfigDict, Field, StrictStr, StringConstraints
+
 from src.core.dto.io._base import BaseIOModelDTO
 from src.core.dto.io.target import ConnectionTargetDTO
-from src.core.types import SocketParams, DEFAULT_SCHEMA_VERSION
-from datetime import datetime, timezone
+from src.core.types import DEFAULT_SCHEMA_VERSION, SocketParams
 
 # --- Strict and constrained DTOs for connect-success event ---
 # Pydantic v2: 검증단 빡빡하게 (StrictStr + StringConstraints)

@@ -12,16 +12,14 @@
 import asyncio
 import contextlib
 
+from src.application.orchestrator import StreamOrchestrator
 from src.common.logger import PipelineLogger
 from src.config.settings import kafka_settings
+from src.infra.cache.cache_client import RedisConnectionManager
 from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
-
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
 )
-from src.infra.cache.cache_client import RedisConnectionManager
-from src.application.orchestrator import StreamOrchestrator
-
 
 logger = PipelineLogger.get_logger("main", "app")
 

@@ -17,12 +17,11 @@ from pydantic import BaseModel
 
 from src.common.exceptions.exception_rule import DESERIALIZATION_ERRORS
 from src.common.logger import PipelineLogger
-from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, RequestType, Region
 from src.core.dto.io.dlq_event import DlqEventDTO
-from src.core.dto.io.target import ConnectionTargetDTO
 from src.core.dto.io.error_event import WsEventErrorMetaDTO
+from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, RequestType
 from src.infra.messaging.connect.producer_client import DlqProducer
-
 
 logger: Final = PipelineLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
@@ -78,7 +77,7 @@ class GenericValidator:
         try:
             # 지정된 DTO 클래스로 변환 시도 (Pydantic 검증 수행)
             dto = dto_class.model_validate(payload)
-            logger.debug(f"직렬화 검증 성공")
+            logger.debug("직렬화 검증 성공")
             return dto
         except DESERIALIZATION_ERRORS as e:
             # 검증 실패 시 DLQ로 전송

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TypeAlias, Callable, ParamSpec, TypeVar, Awaitable
-
+from typing import Awaitable, Callable, ParamSpec, TypeAlias, TypeVar
 
 # 타입 파라미터 정의
 P = ParamSpec("P")

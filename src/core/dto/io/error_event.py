@@ -1,11 +1,11 @@
-from typing import Literal
 from datetime import datetime, timezone
+from typing import Literal
+
 from pydantic import Field
+
 from src.core.dto.io._base import BaseIOModelDTO
-
-from src.core.types import ErrorCode, ErrorDomain
-
 from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.types import ErrorCode, ErrorDomain
 
 
 class WsEventErrorTypeDTO(BaseIOModelDTO):

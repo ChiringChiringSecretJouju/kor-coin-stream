@@ -5,10 +5,9 @@ import time
 from typing import Any, Awaitable, Callable
 
 from src.common.logger import PipelineLogger
-from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.types import (
-    TickerResponseData,
     OrderbookResponseData,
+    TickerResponseData,
     TradeResponseData,
 )
 
@@ -73,7 +72,10 @@ class RealtimeBatchCollector:
         self._flush_timer = asyncio.create_task(self._auto_flush_timer())
 
         logger.info(
-            f"RealtimeBatchCollector started: batch_size={self.batch_size}, time_window={self.time_window}s, max_size={self.max_batch_size}"
+            f"""
+            RealtimeBatchCollector started: batch_size={self.batch_size},
+            time_window={self.time_window}s, max_size={self.max_batch_size}
+            """
         )
 
     async def stop(self) -> None:
@@ -243,7 +245,7 @@ class RealtimeBatchCollector:
         if force:
             logger.debug("Realtime batches flushed (force=True)")
         else:
-            logger.debug(f"Realtime batches flushed (auto/count trigger)")
+            logger.debug("Realtime batches flushed (auto/count trigger)")
 
     def get_batch_status(self) -> dict[str, int]:
         """현재 배치 상태 조회 (디버깅용)"""

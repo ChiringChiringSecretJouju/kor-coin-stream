@@ -6,9 +6,12 @@ confluent-kafka SerializationContext를 dataclass로 상속하여 Python 3.12 �
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from confluent_kafka.serialization import (
+    MessageField,
+)
 from confluent_kafka.serialization import (
     SerializationContext as BaseSerializationContext,
-    MessageField,
 )
 
 

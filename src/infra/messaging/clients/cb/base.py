@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from confluent_kafka import Producer, Consumer
+from confluent_kafka import Consumer, Producer
 
 
 @dataclass(slots=True)

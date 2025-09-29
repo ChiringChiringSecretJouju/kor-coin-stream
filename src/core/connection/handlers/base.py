@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import time
 from abc import ABC, abstractmethod
 from typing import Any, Literal, cast
 
@@ -12,13 +11,13 @@ from src.common.exceptions.exception_rule import SOCKET_EXCEPTIONS
 from src.common.logger import PipelineLogger
 from src.common.metrics import MinuteBatchCounter
 from src.config.settings import websocket_settings
-from src.core.connection.error_handler import ConnectionErrorHandler
-from src.core.connection.health_monitor import ConnectionHealthMonitor
-from src.core.connection.subscription_manager import SubscriptionManager
-from src.core.connection.services.backoff import compute_next_backoff
 from src.core.connection.emitters.connect_success_ack_emitter import (
     ConnectSuccessAckEmitter,
 )
+from src.core.connection.error_handler import ConnectionErrorHandler
+from src.core.connection.health_monitor import ConnectionHealthMonitor
+from src.core.connection.services.backoff import compute_next_backoff
+from src.core.connection.subscription_manager import SubscriptionManager
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
 from src.core.dto.internal.metrics import MinuteItemDomain
 from src.core.types import (
@@ -27,7 +26,6 @@ from src.core.types import (
     RequestType,
 )
 from src.infra.messaging.connect.producer_client import MetricsProducer
-
 
 logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
@@ -84,7 +82,7 @@ class BaseWebsocketHandler(ABC):
         self._max_reconnect_attempts: int = websocket_settings.RECONNECT_MAX_ATTEMPTS
         self._backoff_task: asyncio.Task[None] | None = None
 
-        # emit_factory는 인스턴스 컨텍스트(self.scope, self._metrics_producer)를 캡처한 비동기 함수여야 합니다.
+        # emit_factory는 컨텍스트(self.scope, self._metrics_producer)를 캡처한 비동기 함수일것.
         async def _emit_factory(
             items: list[MinuteItemDomain], start_ts_kst: int, end_ts_kst: int
         ) -> None:
@@ -195,7 +193,9 @@ class BaseWebsocketHandler(ABC):
                 await websocket.close()
             except Exception as close_error:
                 logger.warning(
-                    f"{self.scope.exchange}: websocket close failed during disconnect - {close_error}"
+                    f"""
+                    {self.scope.exchange}: websocket close failed 
+                    during disconnect - {close_error}"""
                 )
 
         await self._health_monitor.stop_monitoring()
@@ -280,7 +280,9 @@ class BaseWebsocketHandler(ABC):
                 )
                 if attempt >= self._max_reconnect_attempts:
                     logger.error(
-                        f"{self.scope.exchange}: 재연결 시도 한도({self._max_reconnect_attempts}) 초과로 종료"
+                        f"""
+                        {self.scope.exchange}:재연결 ({self._max_reconnect_attempts}) 초과 종료
+                        """
                     )
                     await self._error_handler.emit_ws_error(
                         RuntimeError("max reconnect attempts exceeded"),
@@ -295,7 +297,7 @@ class BaseWebsocketHandler(ABC):
                     break
 
                 logger.info(
-                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 시도 (attempt={attempt})"
+                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 (attempt={attempt})"
                 )
                 self._backoff_task = asyncio.create_task(asyncio.sleep(backoff_delay))
                 try:
@@ -332,7 +334,10 @@ class BaseWebsocketHandler(ABC):
                 )
                 if attempt >= self._max_reconnect_attempts:
                     logger.error(
-                        f"{self.scope.exchange}: 재연결 시도 한도({self._max_reconnect_attempts}) 초과로 종료"
+                        f"""
+                        {self.scope.exchange}: 재연결 시도 
+                        재시도 한도({self._max_reconnect_attempts}) 초과로 종료
+                        """
                     )
                     await self._error_handler.emit_ws_error(
                         RuntimeError("max reconnect attempts exceeded"),
@@ -347,7 +352,7 @@ class BaseWebsocketHandler(ABC):
                     break
 
                 logger.info(
-                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 시도 (attempt={attempt})"
+                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 (attempt={attempt})"
                 )
                 self._backoff_task = asyncio.create_task(asyncio.sleep(backoff_delay))
                 try:

@@ -7,12 +7,13 @@ Avro 스키마 등록 스크립트
 
 import asyncio
 import sys
-from src.infra.messaging.avro.schema_registry import (
-    register_all_schemas,
-    delete_all_subjects,
-    SchemaRegistryClient,
-)
+
 from src.common.logger import PipelineLogger
+from src.infra.messaging.avro.schema_registry import (
+    SchemaRegistryClient,
+    delete_all_subjects,
+    register_all_schemas,
+)
 
 logger = PipelineLogger.get_logger("schema_registration", "main")
 

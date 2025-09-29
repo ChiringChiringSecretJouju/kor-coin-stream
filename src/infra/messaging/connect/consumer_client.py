@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import random
 import asyncio
-from typing import Any, Final
-from typing import cast
+import random
+from typing import Any, Final, cast
 
 from src.application.orchestrator import StreamOrchestrator
 from src.common.logger import PipelineLogger
+from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.adapter.stream_context import adapter_stream_context
 from src.core.dto.internal.orchestrator import StreamContextDomain
 from src.core.dto.io.commands import CommandDTO
 from src.core.dto.io.target import ConnectionTargetDTO
-from src.core.types import PayloadAction, PayloadType, ExchangeName, Region, RequestType
+from src.core.types import ExchangeName, PayloadAction, PayloadType, Region, RequestType
 from src.infra.messaging.clients.json_client import create_consumer
 from src.infra.messaging.connect.services.cache_coordinator import CacheCoordinator
 from src.infra.messaging.connect.services.command_validator import GenericValidator
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 
 logger: Final = PipelineLogger.get_logger("consumer", "app")
 
@@ -56,7 +55,8 @@ class KafkaConsumerClient:
                 return True
             case (PayloadType.STATUS, _):
                 logger.debug(
-                    f"무시: action!={PayloadAction.CONNECT_AND_SUBSCRIBE}, 받음: {payload.get('action')}"
+                    f"무시: action!={PayloadAction.CONNECT_AND_SUBSCRIBE}, \n"
+                    f"받음: {payload.get('action')}"
                 )
                 return False
             case (type_val, _):
