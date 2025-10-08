@@ -13,7 +13,7 @@
 	bitfinex-ticker bitfinex-orderbook bitfinex-trade
 
 # 기본 설정
-PYTHON := python
+PYTHON := PYTHONPATH=.. python
 SYMBOLS := BTC,ETH,XRP
 REQUEST_TYPE := ticker
 SUBSCRIBE_TYPE := ticker

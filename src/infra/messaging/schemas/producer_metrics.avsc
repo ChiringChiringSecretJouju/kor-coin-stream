@@ -1,0 +1,86 @@
+{
+  "type": "record",
+  "name": "ProducerMetrics",
+  "namespace": "com.trading.kafka.metrics",
+  "doc": "Kafka Producer 성능 및 배달 메트릭",
+  "fields": [
+    {
+      "name": "timestamp_ms",
+      "type": "long",
+      "doc": "메트릭 생성 시각 (Unix timestamp milliseconds)"
+    },
+    {
+      "name": "producer_class",
+      "type": "string",
+      "doc": "Producer 클래스명 (예: AvroProducerWrapper, AsyncProducerWrapper)"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "MetricEventType",
+        "symbols": ["DELIVERY_SUCCESS", "DELIVERY_FAILURE", "BUFFER_RETRY", "QUEUE_FULL"]
+      },
+      "doc": "메트릭 이벤트 타입"
+    },
+    {
+      "name": "topic",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "대상 토픽명"
+    },
+    {
+      "name": "partition",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "파티션 번호"
+    },
+    {
+      "name": "offset",
+      "type": ["null", "long"],
+      "default": null,
+      "doc": "메시지 오프셋"
+    },
+    {
+      "name": "message_key",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "메시지 키 (최대 100자로 제한)"
+    },
+    {
+      "name": "delivery_latency_ms",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "배달 지연 시간 (produce 호출 ~ 배달 완료, milliseconds)"
+    },
+    {
+      "name": "queue_depth",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "내부 메시지 큐 깊이 (현재 대기 중인 메시지 수)"
+    },
+    {
+      "name": "buffer_retries",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "BufferError로 인한 재시도 횟수"
+    },
+    {
+      "name": "error_code",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "에러 코드 (실패 시)"
+    },
+    {
+      "name": "error_message",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "에러 메시지 (실패 시)"
+    },
+    {
+      "name": "success",
+      "type": "boolean",
+      "doc": "배달 성공 여부"
+    }
+  ]
+}

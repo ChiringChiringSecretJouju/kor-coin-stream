@@ -431,3 +431,80 @@ class RealtimeDataProducer(AvroProducer):
             key=key,
             stop_after_send=False,
         )
+
+
+class ProducerMetricsProducer(AvroProducer):
+    """
+    Producer 메트릭 전송 전용 클래스 (AvroProducer 재사용)
+    
+    - 토픽: metrics.socket.producer
+    - JSON 직렬화 (use_avro=False)로 빠른 전송
+    - 논블로킹: 메트릭 전송 실패해도 메인 로직 영향 없음
+    - AvroProducer 상속으로 코드 중복 제거
+    """
+
+    def __init__(self) -> None:
+        # JSON Producer 사용 (빠른 전송 우선)
+        super().__init__(use_avro=False)
+
+    async def send_metric_event(
+        self,
+        timestamp_ms: int,
+        producer_class: str,
+        event_type: str,
+        topic: str | None = None,
+        partition: int | None = None,
+        offset: int | None = None,
+        message_key: str | None = None,
+        delivery_latency_ms: float | None = None,
+        queue_depth: int | None = None,
+        buffer_retries: int | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        success: bool = True,
+    ) -> None:
+        """메트릭 이벤트를 Kafka로 전송 (논블로킹)
+        
+        Args:
+            timestamp_ms: 메트릭 생성 시각 (Unix timestamp milliseconds)
+            producer_class: Producer 클래스명
+            event_type: DELIVERY_SUCCESS, DELIVERY_FAILURE, BUFFER_RETRY, QUEUE_FULL
+            topic: 대상 토픽명
+            partition: 파티션 번호
+            offset: 메시지 오프셋
+            message_key: 메시지 키 (최대 100자)
+            delivery_latency_ms: 배달 지연 시간 (ms)
+            queue_depth: 내부 큐 깊이
+            buffer_retries: BufferError 재시도 횟수
+            error_code: 에러 코드
+            error_message: 에러 메시지
+            success: 배달 성공 여부
+        """
+        try:
+            metric_payload = {
+                "timestamp_ms": timestamp_ms,
+                "producer_class": producer_class,
+                "event_type": event_type,
+                "topic": topic,
+                "partition": partition,
+                "offset": offset,
+                "message_key": message_key,
+                "delivery_latency_ms": delivery_latency_ms,
+                "queue_depth": queue_depth,
+                "buffer_retries": buffer_retries,
+                "error_code": error_code,
+                "error_message": error_message,
+                "success": success,
+            }
+
+            # produce_sending 사용 (stop_after_send=False로 계속 사용)
+            await self.produce_sending(
+                message=metric_payload,
+                topic="metrics.socket.producer",
+                key=producer_class,
+                stop_after_send=False,
+            )
+
+        except Exception as e:
+            # 메트릭 전송 실패해도 메인 로직에 영향 없음
+            logger.debug(f"[메트릭 전송 실패] {e}")
