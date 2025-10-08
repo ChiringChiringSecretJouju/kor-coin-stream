@@ -20,6 +20,10 @@ from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
 )
+from src.infra.messaging.connect.producer_client import (
+    ProducerMetricsProducer,
+    create_avro_producer,
+)
 
 logger = PipelineLogger.get_logger("main", "app")
 
@@ -31,6 +35,7 @@ async def main() -> None:
     redis_mgr = RedisConnectionManager.get_instance()
     await redis_mgr.initialize()
     orchestrator = StreamOrchestrator()
+
     command_consumer = KafkaConsumerClient(
         orchestrator=orchestrator,
         topic=kafka_settings.STATUS_TOPIC,
@@ -39,6 +44,12 @@ async def main() -> None:
         orchestrator=orchestrator,
         topic=kafka_settings.DISCONNECTION_TOPIC,
     )
+    producer_metrics_producer = ProducerMetricsProducer()
+    await producer_metrics_producer.start_producer()
+
+    my_producer = create_avro_producer(value_subject="producer-metrics-delivery")
+    my_producer.set_metrics_callback(producer_metrics_producer.send_metric_event)
+    await my_producer.start()
 
     tasks = [
         asyncio.create_task(

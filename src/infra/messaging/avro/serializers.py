@@ -32,7 +32,7 @@ async def get_registry_client() -> AsyncSchemaRegistryClient:
     """프로세스 단위 단일 AsyncSchemaRegistryClient 인스턴스 생성/재사용."""
     return AsyncSchemaRegistryClient(
         {
-            "url": KafkaSettings.SCHEMA_REGISTRY_URL,
+            "url": KafkaSettings().KAFKA_SCHEMA_REGISTER,
             "cache.capacity": 1000,  # 스키마 캐시 용량
             "cache.latest.ttl.sec": 300,  # 최신 스키마 캐시 TTL (5분)
         }
