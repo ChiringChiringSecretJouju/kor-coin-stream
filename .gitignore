@@ -211,3 +211,6 @@ logs/
 .windsurfrules
 case.md
 json
+benchmarks
+result.md
+result2.md

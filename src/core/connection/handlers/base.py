@@ -25,7 +25,10 @@ from src.core.types import (
     Region,
     RequestType,
 )
-from src.infra.messaging.connect.producer_client import MetricsProducer
+from src.infra.messaging.connect.producer_client import (
+    BackpressureEventProducer,
+    MetricsProducer,
+)
 
 logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
@@ -70,8 +73,13 @@ class BaseWebsocketHandler(ABC):
         self._subscription_manager = SubscriptionManager(self.scope)
         self._health_monitor = ConnectionHealthMonitor(self.scope, self.policy)
         self._error_handler = ConnectionErrorHandler(self.scope)
+        
         # 롱-리빙 메트릭 프로듀서
         self._metrics_producer = MetricsProducer()
+        
+        # 백프레셔 모니터링 Producer
+        self._backpressure_producer = BackpressureEventProducer()
+        
         # 연결 성공 ACK 방출기
         self._ack_emitter = ConnectSuccessAckEmitter(self.scope)
         # 중복 ACK 방지 플래그 (연결당 1회만 발행)
@@ -224,6 +232,14 @@ class BaseWebsocketHandler(ABC):
                     attempt = 0  # 성공적으로 연결되었으므로 백오프 시도횟수 리셋
                     self._stop_requested = False
                     self._ack_sent = False
+
+                    # Producer 시작 및 백프레셔 모니터링 연결
+                    await self._backpressure_producer.start_producer()
+                    await self._metrics_producer.start_producer()
+                    # MetricsProducer에 백프레셔 모니터링 연결 (30초마다 큐 상태 리포트)
+                    self._metrics_producer.producer.set_backpressure_event_producer(
+                        self._backpressure_producer, enable_periodic_monitoring=True
+                    )
 
                     # 현재 연결 보관 및 구독 매니저에 파라미터 등록
                     self._current_websocket = websocket

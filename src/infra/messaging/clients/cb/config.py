@@ -56,6 +56,7 @@ def consumer_config(**overrides: Any) -> dict:
 
     - confluent-kafka-python 호환 설정만 사용
     - 최소한의 필수 설정으로 안정성 확보
+    - cooperative-sticky 전략으로 리밸런싱 최적화 (무중단)
 
     Args:
         **overrides: 사용자 지정 설정으로 덮어쓸 값들
@@ -78,6 +79,9 @@ def consumer_config(**overrides: Any) -> dict:
         "session.timeout.ms": 30000,
         "heartbeat.interval.ms": 10000,
         "max.poll.interval.ms": 300000,
+        # 파티션 할당 전략 (시니어 레벨 최적화)
+        # cooperative-sticky: 증분 리밸런싱으로 서비스 중단 없음 (vs stop-the-world)
+        "partition.assignment.strategy": "cooperative-sticky",
     }
 
     cfg.update(overrides)

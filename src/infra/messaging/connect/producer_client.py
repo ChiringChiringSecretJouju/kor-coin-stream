@@ -12,6 +12,10 @@ from src.common.logger import PipelineLogger
 # NOTE: confluent-kafka 기반으로 직렬화 처리 (기존 aiokafka 방식에서 마이그레이션)
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.metrics import MinuteItemDomain
+from src.core.dto.io.backpressure_event import (
+    BackpressureEventDTO,
+    BackpressureStatusDTO,
+)
 from src.core.dto.io.commands import ConnectRequestDTO, ConnectSuccessEventDTO
 from src.core.dto.io.counting import CountingBatchDTO, MarketCountingDTO
 from src.core.dto.io.dlq_event import DlqEventDTO
@@ -283,6 +287,68 @@ class DlqProducer(AvroProducer):
             message=event,
             topic="ws.dlq",
             key=key,
+        )
+
+
+class BackpressureEventProducer(AvroProducer):
+    """
+    통합 백프레셔 이벤트 프로듀서
+
+    Producer 큐의 백프레셔 상태를 실시간으로 Kafka에 전송하여
+    모니터링 및 알림을 지원합니다.
+
+    - ws.backpressure.events 토픽으로 전송
+    - 백프레셔 활성화/비활성화 이벤트 추적
+    - 큐 사용률 및 상태 정보 포함
+    - use_avro=True: AvroProducerWrapper (backpressure-events-value 스키마)
+    - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
+
+    Example:
+        >>> producer = BackpressureEventProducer()
+        >>> await producer.start_producer()
+        >>> await producer.send_backpressure_event(
+        ...     action="backpressure_activated",
+        ...     producer_name="MetricsProducer",
+        ...     status=status_dict
+        ... )
+    """
+
+    async def send_backpressure_event(
+        self,
+        action: str,
+        producer_name: str,
+        status: dict[str, int | float | bool],
+        producer_type: str = "AsyncProducerBase",
+        message: str | None = None,
+        key: KeyType = None,
+    ) -> bool:
+        """백프레셔 이벤트 전송
+
+        Args:
+            action: 백프레셔 상태 ("backpressure_activated" | "backpressure_deactivated")
+            producer_name: Producer 이름 (클래스명)
+            status: 백프레셔 상태 정보 dict
+            producer_type: Producer 타입
+            message: 추가 메시지
+            key: Kafka 메시지 키
+
+        Returns:
+            전송 성공 여부
+        """
+        status_dto = BackpressureStatusDTO(**status)
+        event = BackpressureEventDTO(
+            action=action,  # type: ignore
+            producer_name=producer_name,
+            producer_type=producer_type,
+            status=status_dto,
+            message=message,
+        )
+
+        return await self.produce_sending(
+            message=event,
+            topic="ws.backpressure.events",
+            key=key,
+            stop_after_send=False,
         )
 
 
