@@ -5,8 +5,8 @@ import random
 from typing import Any, Final, cast
 
 from src.application.orchestrator import StreamOrchestrator
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.adapter.stream_context import adapter_stream_context
 from src.core.dto.internal.orchestrator import StreamContextDomain
 from src.core.dto.io.commands import CommandDTO
@@ -63,9 +63,24 @@ class KafkaConsumerClient:
                 logger.debug(f"무시: type!={PayloadType.STATUS}, 받음: {type_val}")
                 return False
 
-    async def _enqueue_connect_task(self, validated: StreamContextDomain) -> None:
+    async def _enqueue_connect_task(
+        self, validated: StreamContextDomain, record: dict
+    ) -> None:
         """오케스트레이터 연결 작업을 백그라운드 태스크로 등록."""
-        task = asyncio.create_task(self.orchestrator.connect_from_context(validated))
+
+        async def _task_with_offset_store() -> None:
+            try:
+                await self.orchestrator.connect_from_context(validated)
+
+                # ✅ 성공 시 오프셋 저장 (메모리에만, 초고속)
+                if raw_msg := record.get("_raw_msg"):
+                    self.consumer.consumer.store_offsets(message=raw_msg)
+
+            except Exception as e:
+                logger.error(f"처리 실패, 재시도 예정: {e}", exc_info=True)
+                # ❌ 실패 시 저장하지 않음 → 재처리됨
+
+        task = asyncio.create_task(_task_with_offset_store())
         self._tasks.add(task)
 
         def _on_done(t: asyncio.Task[None]) -> None:
@@ -84,7 +99,6 @@ class KafkaConsumerClient:
             exchange: str | None = "unknown"
             region: str | None = "unknown"
             request_type: str | None = "unknown"
-            observed_key: str = "unknown/unknown/unknown"
 
             try:
                 if not isinstance(payload, dict):
@@ -93,7 +107,6 @@ class KafkaConsumerClient:
                 exchange: str | None = tgt["exchange"]
                 region: str | None = tgt["region"]
                 request_type: str | None = tgt["request_type"]
-                observed_key: str = f"{exchange}/{region}/{request_type}"
 
                 if not self._should_process(payload):
                     continue
@@ -120,24 +133,19 @@ class KafkaConsumerClient:
                 # Validator 성공 → 내부 도메인 컨텍스트로 어댑트
                 ctx: StreamContextDomain = adapter_stream_context(validated_dto)
 
-                await self._enqueue_connect_task(ctx)
+                await self._enqueue_connect_task(ctx, record)  # record 전달
             except Exception as e:
-                # 항상 ws.error 발행 (키 누락 시 unknown으로 대체)
-                logger.error(f"Kafka 컨슈머 오류 발생: {e}")
-
-                observed_key = f"{exchange}/{region}/{request_type}"
-
+                # 통합 에러 처리 (분류 → 로깅 → ws.error 발행)
                 target = ConnectionTargetDTO(
                     exchange=cast(ExchangeName, exchange),
                     region=cast(Region, region),
                     request_type=cast(RequestType, request_type),
                 )
-                await make_ws_error_event_from_kind(
+                await dispatch_error(
+                    exc=e,
+                    kind="kafka_consumer",
                     target=target,
-                    err=e,
-                    kind="kafka",
-                    observed_key=observed_key,
-                    raw_context=None,
+                    context={"record": record, "payload": payload},
                 )
 
     async def run(self) -> None:

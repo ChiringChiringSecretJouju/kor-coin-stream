@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from src.common.exceptions.error_dto_builder import (
+    make_ws_error_event_from_kind,
+)
 from src.common.logger import PipelineLogger
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.commands import ConnectSuccessEventDTO, ConnectSuccessMetaDTO
 from src.core.dto.io.target import ConnectionTargetDTO
@@ -78,7 +80,7 @@ class ConnectSuccessAckEmitter:
                     observed_key=self._observed_key,
                 ),
             )
-            key = f"{self._target.exchange}|{self._target.region}|{self._target.request_type}|{coin}"
+            key = f"{self._target.exchange}|{self._target.region}|{self._target.request_type}|{coin}"  # noqa: E501
             try:
                 await self._producer.send_event(event, key=key)
             except Exception as e:

@@ -1,0 +1,290 @@
+"""통합 에러 디스패처 (EDA 환경용)
+
+전략 기반 에러 처리:
+- 예외 분류 (classify_exception)
+- 전략 결정 (get_error_strategy)
+- 이벤트 발행 (ws.error)
+- DLQ 전송
+- Circuit Breaker (Redis 기반 분산 서킷브레이커)
+- 알람
+"""
+from __future__ import annotations
+
+import traceback
+
+from src.common.exceptions.circuit_breaker import (
+    CircuitBreakerOpenError,
+    RedisCircuitBreaker,
+    create_circuit_breaker,
+)
+from src.common.exceptions.exception_rule import (
+    ErrorSeverity,
+    classify_exception,
+    get_error_strategy,
+)
+from src.common.logger import PipelineLogger
+from src.core.dto.io.dlq_event import DlqEventDTO
+from src.core.dto.io.target import ConnectionTargetDTO
+from src.infra.messaging.connect.producer_client import DlqProducer, ErrorEventProducer
+
+from .error_dto_builder import (
+    _make_json_serializable,
+    build_error_meta,
+    make_ws_error_event_from_kind,
+)
+
+logger = PipelineLogger.get_logger("error_dispatcher", "core")
+
+__all__ = [
+    "ErrorDispatcher",
+    "dispatch_error",
+    "CircuitBreakerOpenError",  # Re-export for external use
+]
+
+
+class ErrorDispatcher:
+    """통합 에러 처리 디스패처 (EDA 환경용)
+
+    책임:
+    1. 예외 분류 (classify_exception)
+    2. 전략 결정 (get_error_strategy)
+    3. 이벤트 발행 (ws.error)
+    4. DLQ 전송
+    5. Circuit Breaker (Redis 기반 분산)
+    6. 알람
+    """
+
+    def __init__(self, dlq_producer: DlqProducer | None = None):
+        self.dlq_producer = dlq_producer
+        self._circuit_breakers: dict[str, RedisCircuitBreaker] = {}  # 서킷브레이커 캐시
+
+    async def dispatch(
+        self,
+        exc: Exception,
+        kind: str,
+        target: ConnectionTargetDTO,
+        context: dict | None = None,
+        producer: ErrorEventProducer | None = None,
+    ) -> None:
+        """전략 기반 통합 에러 디스패처"""
+        # 1. 예외 분류
+        domain, code, retryable = classify_exception(exc, kind)
+
+        # 2. 전략 조회
+        strategy = get_error_strategy(code)
+
+        # 3. 로깅 (severity별)
+        log_method = getattr(logger, strategy.log_level, logger.error)
+        observed_key = f"{target.exchange}/{target.region}/{target.request_type}"
+        log_method(
+            f"[{strategy.severity.value.upper()}] {kind} error: {exc}",
+            exc_info=True,
+            extra={
+                "error_domain": (
+                    domain.value if hasattr(domain, "value") else str(domain)
+                ),
+                "error_code": code.value if hasattr(code, "value") else str(code),
+                "severity": strategy.severity.value,
+                "retryable": retryable,
+                "observed_key": observed_key,
+                **(context or {}),
+            },
+        )
+
+        # 4. ws.error 발행 (전략에 따라)
+        if strategy.send_to_ws_error:
+            try:
+                await make_ws_error_event_from_kind(
+                    target=target,
+                    err=exc,
+                    kind=kind,
+                    observed_key=observed_key,
+                    raw_context=context,
+                    producer=producer,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send ws.error: {e}", exc_info=True)
+
+        # 5. DLQ 전송 (전략에 따라)
+        if strategy.send_to_dlq:
+            try:
+                await self._send_to_dlq(exc, kind, target, context)
+            except Exception as e:
+                logger.error(f"Failed to send DLQ: {e}", exc_info=True)
+
+        # 6. Circuit Breaker (전략에 따라)
+        if strategy.circuit_break:
+            await self._check_circuit_breaker(target, exc)
+
+        # 7. 알람 (전략에 따라)
+        if strategy.alert:
+            await self._send_alert(exc, strategy.severity, target)
+
+    async def _send_to_dlq(
+        self,
+        exc: Exception,
+        kind: str,
+        target: ConnectionTargetDTO,
+        context: dict | None = None,
+    ) -> None:
+        """DLQ 전송 헬퍼"""
+        dlq_producer = self.dlq_producer or DlqProducer()
+
+        observed_key = f"{target.exchange}/{target.region}/{target.request_type}"
+        meta = build_error_meta(
+            observed_key=observed_key,
+            raw_context=_make_json_serializable(context or {}),
+        )
+
+        dlq_event = DlqEventDTO(
+            action="dlq",
+            reason=f"{kind} failure: {type(exc).__name__}",
+            target=target,
+            meta=meta,
+            detail_error={
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc),
+                "traceback": traceback.format_exc(),
+                "kind": kind,  # DLQ 원인 명시
+            },
+        )
+
+        await dlq_producer.send_dlq_event(dlq_event)
+
+    async def _check_circuit_breaker(
+        self,
+        target: ConnectionTargetDTO,
+        exc: Exception,
+    ) -> None:
+        """Redis 기반 Circuit Breaker 체크 및 실패 기록
+
+        - 분산 환경에서 상태 공유
+        - 자동 복구 (OPEN → HALF_OPEN → CLOSED)
+        - 실시간 장애 감지
+        """
+        key = f"{target.exchange}/{target.region}/{target.request_type}"
+
+        # 서킷브레이커 인스턴스 가져오기 (캐싱)
+        breaker = await self._get_or_create_breaker(key)
+
+        # 실패 기록 (상태 자동 전환)
+        await breaker.record_failure()
+
+        # 현재 상태 로깅
+        state = await breaker.get_state()
+        logger.warning(
+            f"Circuit breaker failure recorded: {key} (state: {state.value})",
+            extra={
+                "circuit_breaker_key": key,
+                "circuit_state": state.value,
+                "exception_type": type(exc).__name__,
+            },
+        )
+
+    async def _get_or_create_breaker(self, key: str) -> RedisCircuitBreaker:
+        """서킷브레이커 인스턴스 가져오기 또는 생성
+
+        Args:
+            key: 서킷브레이커 키 (예: "upbit/kr/ticker")
+
+        Returns:
+            RedisCircuitBreaker 인스턴스
+        """
+        if key not in self._circuit_breakers:
+            self._circuit_breakers[key] = await create_circuit_breaker(key)
+        return self._circuit_breakers[key]
+
+    async def record_success(
+        self,
+        target: ConnectionTargetDTO,
+    ) -> None:
+        """성공 기록 (외부에서 호출용)
+
+        사용법:
+            dispatcher = ErrorDispatcher()
+            try:
+                result = await some_operation()
+                await dispatcher.record_success(target)  # 성공 시
+            except Exception as e:
+                await dispatcher.dispatch(e, "operation", target)  # 실패 시
+
+        Args:
+            target: ConnectionTargetDTO
+        """
+        key = f"{target.exchange}/{target.region}/{target.request_type}"
+        breaker = await self._get_or_create_breaker(key)
+        await breaker.record_success()
+
+        logger.debug(
+            f"Circuit breaker success recorded: {key}",
+            extra={"circuit_breaker_key": key},
+        )
+
+    async def is_request_allowed(
+        self,
+        target: ConnectionTargetDTO,
+    ) -> bool:
+        """요청 허용 여부 확인 (외부에서 호출용)
+
+        사용법:
+            dispatcher = ErrorDispatcher()
+            if not await dispatcher.is_request_allowed(target):
+                raise CircuitBreakerOpenError("Circuit is OPEN")
+
+        Args:
+            target: ConnectionTargetDTO
+
+        Returns:
+            True: 요청 허용, False: 요청 차단
+
+        Raises:
+            CircuitBreakerOpenError: 요청 차단 시 (선택적)
+        """
+        key = f"{target.exchange}/{target.region}/{target.request_type}"
+        breaker = await self._get_or_create_breaker(key)
+        allowed = await breaker.is_request_allowed()
+
+        if not allowed:
+            logger.error(
+                f"Circuit breaker blocked request: {key}",
+                extra={"circuit_breaker_key": key},
+            )
+
+        return allowed
+
+    async def _send_alert(
+        self,
+        exc: Exception,
+        severity: ErrorSeverity,
+        target: ConnectionTargetDTO,
+    ) -> None:
+        """알람 발송 (Slack/PagerDuty 등) - TODO"""
+        logger.info(
+            f"Alert: {severity.value} - {exc}",
+            extra={
+                "target": f"{target.exchange}/{target.region}/{target.request_type}"
+            },
+        )
+
+    async def cleanup(self) -> None:
+        """서킷브레이커 리소스 정리
+
+        애플리케이션 종료 시 호출
+        """
+        for breaker in self._circuit_breakers.values():
+            await breaker.stop()
+        self._circuit_breakers.clear()
+        logger.info("All circuit breakers cleaned up")
+
+
+# 하위 호환성을 위한 함수
+async def dispatch_error(
+    exc: Exception,
+    kind: str,
+    target: ConnectionTargetDTO,
+    context: dict | None = None,
+    producer: ErrorEventProducer | None = None,
+) -> None:
+    """하위 호환성을 위한 래퍼 함수"""
+    dispatcher = ErrorDispatcher()
+    await dispatcher.dispatch(exc, kind, target, context, producer)

@@ -20,9 +20,11 @@ import uuid
 
 from redis.asyncio import Redis
 
+from src.common.exceptions.error_dto_builder import (
+    make_ws_error_event_from_kind,
+)
 from src.common.logger import PipelineLogger
 from src.config.settings import redis_settings
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.cache import (
     ConnectionKeyBuilderDomain,
     ConnectionMetaDomain,

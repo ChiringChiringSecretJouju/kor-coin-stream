@@ -106,6 +106,7 @@ class AsyncConsumerWrapper(AsyncConsumerBase):
             "key": deserialized_key,
             "value": deserialized_value,
             "topic": raw_msg.topic(),
+            "_raw_msg": raw_msg,  # 오프셋 커밋용 원본 Message 객체 보존
         }
 
 

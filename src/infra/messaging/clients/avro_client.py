@@ -6,11 +6,13 @@ BaseAvroHandler를 기반으로 한 고성능 Avro Producer/Consumer 래퍼입�
 """
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
+from src.core.dto.io.target import ConnectionTargetDTO
 from src.infra.messaging.avro.serializers import (
     AsyncAvroDeserializer,
     AsyncAvroSerializer,
@@ -88,8 +90,10 @@ class AvroConsumerWrapper(AsyncConsumerBase):
     # Avro 전용 역직렬화기 (init=False)
     _value_deserializer: AsyncAvroDeserializer | None = field(default=None, init=False)
     _key_deserializer: AsyncAvroDeserializer | None = field(default=None, init=False)
-    # 동시 역직렬화 제한(백프레셔)
-    _max_concurrency: int = 16
+    # 동시 역직렬화 제한(백프레셔) - CPU 코어 기반 동적 설정
+    _max_concurrency: int = field(
+        default_factory=lambda: min(os.cpu_count() * 4 if os.cpu_count() else 16, 64)
+    )
     _sem: asyncio.Semaphore | None = field(default=None, init=False, repr=False)
     # 입력 경계 검증(선택): Pydantic v2 TypeAdapter
     value_model: type[BaseModel] | None = None
@@ -135,12 +139,28 @@ class AvroConsumerWrapper(AsyncConsumerBase):
                 if self._sem is not None:
                     async with self._sem:
                         await self._deserialize_and_enqueue(
-                            value_bytes, key_bytes, topic
+                            value_bytes, key_bytes, topic, raw_msg
                         )
                 else:
-                    await self._deserialize_and_enqueue(value_bytes, key_bytes, topic)
+                    await self._deserialize_and_enqueue(
+                        value_bytes, key_bytes, topic, raw_msg
+                    )
             except Exception as e:
-                print(f"{self.__class__.__name__} 비동기 역직렬화 오류: {e}")
+                # 통합 에러 처리 (분류 → 로깅 → ws.error 발행)
+                from src.common.exceptions.error_dispatcher import dispatch_error
+                await dispatch_error(
+                    exc=e,
+                    kind="avro_deserialization",
+                    target=ConnectionTargetDTO(
+                        exchange="system",
+                        region="internal",
+                        request_type="avro_consumer",
+                    ),
+                    context={
+                        "topic": topic,
+                        "value_bytes_len": len(value_bytes) if value_bytes else 0,
+                    },
+                )
 
         # 이벤트 루프에 안전하게 태스크 스케줄 및 트래킹 등록
         def _schedule() -> None:
@@ -150,7 +170,7 @@ class AvroConsumerWrapper(AsyncConsumerBase):
         self._loop.call_soon_threadsafe(_schedule)
 
     async def _deserialize_and_enqueue(
-        self, value_bytes: bytes, key_bytes: bytes | None, topic: str
+        self, value_bytes: bytes, key_bytes: bytes | None, topic: str, raw_msg: Any
     ) -> None:
         """이벤트 루프 내에서 실행: 역직렬화 → (선택)키 처리 → 큐 삽입"""
         assert self._value_deserializer is not None
@@ -191,7 +211,12 @@ class AvroConsumerWrapper(AsyncConsumerBase):
                 except Exception:
                     deserialized_key = key_bytes
 
-        message = {"key": deserialized_key, "value": deserialized_value, "topic": topic}
+        message = {
+            "key": deserialized_key,
+            "value": deserialized_value,
+            "topic": topic,
+            "_raw_msg": raw_msg,  # 오프셋 커밋용 원본 Message 객체 보존
+        }
         self._add_message_to_queue(message)
 
     def _register_task(self, task: asyncio.Task[Any]) -> None:

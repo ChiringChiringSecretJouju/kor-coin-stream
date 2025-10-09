@@ -69,10 +69,11 @@ async def run() -> None:
     key = f"{args.region}|{args.exchange}|{args.request_type}"
 
     producer = ConnectRequestProducer(topic="ws.command")
-
     try:
         ok = await producer.send_event(payload, key=key)
         print("published" if ok else "failed")
+    except Exception as e:
+        print(e)
     finally:
         await producer.stop_producer()
 

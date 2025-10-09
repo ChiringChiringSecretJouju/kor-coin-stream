@@ -20,10 +20,6 @@ from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
 )
-from src.infra.messaging.connect.producer_client import (
-    ProducerMetricsProducer,
-    create_avro_producer,
-)
 
 logger = PipelineLogger.get_logger("main", "app")
 
@@ -44,12 +40,6 @@ async def main() -> None:
         orchestrator=orchestrator,
         topic=kafka_settings.DISCONNECTION_TOPIC,
     )
-    producer_metrics_producer = ProducerMetricsProducer()
-    await producer_metrics_producer.start_producer()
-
-    my_producer = create_avro_producer(value_subject="producer-metrics-delivery")
-    my_producer.set_metrics_callback(producer_metrics_producer.send_metric_event)
-    await my_producer.start()
 
     tasks = [
         asyncio.create_task(
@@ -62,7 +52,7 @@ async def main() -> None:
         ),
     ]
     try:
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
     except KeyboardInterrupt:
         logger.info("사용자에 의해 프로그램이 종료되었습니다")
     finally:

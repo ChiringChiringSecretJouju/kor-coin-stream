@@ -4,8 +4,10 @@ import asyncio
 from typing import Any, Final, cast
 
 from src.application.orchestrator import StreamOrchestrator
+from src.common.exceptions.error_dto_builder import (
+    make_ws_error_event_from_kind,
+)
 from src.common.logger import PipelineLogger
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.io.commands import DisconnectCommandDTO
 from src.core.dto.io.target import ConnectionTargetDTO
 from src.core.types import ExchangeName, PayloadAction, PayloadType, Region, RequestType

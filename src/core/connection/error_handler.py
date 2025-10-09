@@ -2,12 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.common.logger import PipelineLogger
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.target import ConnectionTargetDTO
-
-logger = PipelineLogger.get_logger("error_handler", "connection")
 
 
 class ConnectionErrorHandler:
@@ -32,22 +29,12 @@ class ConnectionErrorHandler:
         observed_key: str = "",
         raw_context: dict | None = None,
     ) -> None:
-        """웹소켓 경계 에러를 표준 에러 토픽으로 발행(kind='ws')"""
-        logger.debug(
-            f"{self.scope.exchange}: 웹소켓 에러 발행",
-            extra={
-                "error_type": type(err).__name__,
-                "error_message": str(err),
-                "observed_key": observed_key,
-            },
-        )
-
-        await make_ws_error_event_from_kind(
-            target=self._target,
-            err=err,
+        """웹소켓 경계 에러를 통합 디스패처로 처리 (전략 기반)"""
+        await dispatch_error(
+            exc=err if isinstance(err, Exception) else Exception(str(err)),
             kind="ws",
-            observed_key=observed_key,
-            raw_context=raw_context,
+            target=self._target,
+            context=raw_context,
         )
 
     async def emit_subscription_error(
@@ -56,24 +43,16 @@ class ConnectionErrorHandler:
         symbols: list[str] | None = None,
         raw_context: dict | None = None,
     ) -> None:
-        """구독 관련 에러를 표준 에러 토픽으로 발행(kind='subscription')"""
-        observed_key = f"symbols:{','.join(symbols)}" if symbols else ""
-
-        logger.debug(
-            f"{self.scope.exchange}: 구독 에러 발행",
-            extra={
-                "error_type": type(err).__name__,
-                "error_message": str(err),
-                "symbols": symbols,
-            },
-        )
-
-        await make_ws_error_event_from_kind(
-            target=self._target,
-            err=err,
+        """구독 관련 에러를 통합 디스패처로 처리 (전략 기반)"""
+        context = raw_context or {}
+        if symbols:
+            context["symbols"] = symbols
+        
+        await dispatch_error(
+            exc=err if isinstance(err, Exception) else Exception(str(err)),
             kind="subscription",
-            observed_key=observed_key,
-            raw_context=raw_context,
+            target=self._target,
+            context=context,
         )
 
     async def emit_connection_error(
@@ -84,31 +63,17 @@ class ConnectionErrorHandler:
         backoff: float,
         **additional_context: Any,  # Any 사용 이유: 거래소별 다양한 추가 컨텍스트를 수용하기 위함
     ) -> None:
-        """연결 관련 에러를 표준 에러 토픽으로 발행(kind='connection')"""
-        raw_context = {
+        """연결 관련 에러를 통합 디스패처로 처리 (전략 기반)"""
+        context = {
             "url": url,
             "attempt": attempt,
             "backoff": backoff,
             **additional_context,
         }
 
-        observed_key = f"url:{url}:attempt:{attempt}"
-
-        logger.debug(
-            f"{self.scope.exchange}: 연결 에러 발행",
-            extra={
-                "error_type": type(err).__name__,
-                "error_message": str(err),
-                "url": url,
-                "attempt": attempt,
-                "backoff": backoff,
-            },
-        )
-
-        await make_ws_error_event_from_kind(
-            target=self._target,
-            err=err,
+        await dispatch_error(
+            exc=err if isinstance(err, Exception) else Exception(str(err)),
             kind="connection",
-            observed_key=observed_key,
-            raw_context=raw_context,
+            target=self._target,
+            context=context,
         )

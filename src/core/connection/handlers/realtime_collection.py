@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Awaitable, Callable
+from collections import deque
+from typing import Any, Awaitable, Callable, Literal, TypeAlias
 
 from src.common.logger import PipelineLogger
 from src.core.types import (
@@ -13,7 +14,15 @@ from src.core.types import (
 
 logger = PipelineLogger.get_logger("realtime_collector", "connection")
 
-EmitFactory: type = Callable[[str, list[dict[str, Any]], int], Awaitable[bool]]
+# 타입 정의
+EmitFactory: TypeAlias = Callable[[list[dict[str, Any]]], Awaitable[bool]]
+MessageType: TypeAlias = Literal["ticker", "orderbook", "trade"]
+BatchData: TypeAlias = TickerResponseData | OrderbookResponseData | TradeResponseData
+MemoryStorage: TypeAlias = dict[MessageType, deque[BatchData]]
+
+# 상수 정의
+MESSAGE_TYPES: tuple[MessageType, ...] = ("ticker", "orderbook", "trade")
+ERROR_RETRY_DELAY: float = 1.0
 
 
 class RealtimeBatchCollector:
@@ -43,25 +52,23 @@ class RealtimeBatchCollector:
         self.max_batch_size = max_batch_size
         self.emit_factory = emit_factory
 
-        # 배치 데이터 저장소 (메모리 사전 할당)
-        self._ticker_batch: list[TickerResponseData] = []
-        self._orderbook_batch: list[OrderbookResponseData] = []
-        self._trade_batch: list[TradeResponseData] = []
+        # 배치 데이터 저장소 (딕셔너리로 통합 관리)
+        self._batches: MemoryStorage = {
+            "ticker": deque(maxlen=self.max_batch_size),
+            "orderbook": deque(maxlen=self.max_batch_size),
+            "trade": deque(maxlen=self.max_batch_size),
+        }
 
-        # 배치별 개별 타이머 (세밀한 제어)
-        self._batch_timers: dict[str, float] = {
-            "ticker": time.time(),
-            "orderbook": time.time(),
-            "trade": time.time(),
+        # 배치별 개별 타이머
+        current_time = time.time()
+        self._batch_timers: dict[MessageType, float] = {
+            msg_type: current_time for msg_type in MESSAGE_TYPES
         }
 
         # 타이머 관리
-        self._last_flush_time = time.time()
+        self._last_flush_time = current_time
         self._flush_timer: asyncio.Task | None = None
         self._is_running = False
-
-        # 성능 최적화: 배치 크기 예약
-        self._reserve_batch_capacity()
 
     async def start(self) -> None:
         """컬렉터 시작 및 백그라운드 타이머 실행"""
@@ -91,73 +98,30 @@ class RealtimeBatchCollector:
                 pass
 
         # 잔여 배치 플러시
-        if self._ticker_batch or self._orderbook_batch or self._trade_batch:
+        if any(self._batches.values()):
             await self._flush_batches(force=True)
 
         logger.info("RealtimeBatchCollector stopped")
-
-    def _reserve_batch_capacity(self) -> None:
-        """배치 리스트 용량 사전 예약 (성능 최적화)"""
-        # 메모리 사전 할당으로 리스트 재할당 오버헤드 감소
-        if hasattr(list, "__sizeof__"):  # CPython에서만 지원
-            try:
-                # 예상 최대 크기로 사전 할당
-                self._ticker_batch = [None] * self.max_batch_size  # type: ignore
-                self._ticker_batch.clear()
-                self._orderbook_batch = [None] * self.max_batch_size  # type: ignore
-                self._orderbook_batch.clear()
-                self._trade_batch = [None] * self.max_batch_size  # type: ignore
-                self._trade_batch.clear()
-            except Exception:
-                # 실패 시 기본 리스트 사용
-                pass
 
     async def add_message(self, message_type: str, data: dict[str, Any]) -> None:
         """메시지 배치에 추가 (성능 최적화)"""
         if not self._is_running:
             return
 
-        current_time = time.time()
-        batch_updated = False
+        # 타입 검증
+        if message_type not in self._batches:
+            logger.warning(f"Unknown message type: {message_type}")
+            return
 
-        # 해당 타입 배치에 추가
-        if message_type == "ticker":
-            self._ticker_batch.append(data)
-            self._batch_timers["ticker"] = current_time
-            batch_updated = True
-            # 최대 크기 초과 방지
-            if len(self._ticker_batch) >= self.max_batch_size:
-                await self._flush_single_batch("ticker")
-                return
-        elif message_type == "orderbook":
-            self._orderbook_batch.append(data)
-            self._batch_timers["orderbook"] = current_time
-            batch_updated = True
-            if len(self._orderbook_batch) >= self.max_batch_size:
-                await self._flush_single_batch("orderbook")
-                return
-        elif message_type == "trade":
-            self._trade_batch.append(data)
-            self._batch_timers["trade"] = current_time
-            batch_updated = True
-            if len(self._trade_batch) >= self.max_batch_size:
-                await self._flush_single_batch("trade")
-                return
+        # 배치에 추가
+        batch = self._batches[message_type]
+        batch.append(data)
+        self._batch_timers[message_type] = time.time()
 
-        # 배치 조건 확인 (개수 기준) - 단일 타입만 체크
-        if batch_updated:
-            batch_size = (
-                len(self._ticker_batch)
-                if message_type == "ticker"
-                else (
-                    len(self._orderbook_batch)
-                    if message_type == "orderbook"
-                    else len(self._trade_batch)
-                )
-            )
-
-            if batch_size >= self.batch_size:
-                await self._flush_single_batch(message_type)
+        # 플러시 조건 확인
+        batch_len = len(batch)
+        if batch_len >= self.max_batch_size or batch_len >= self.batch_size:
+            await self._flush_single_batch(message_type)
 
     async def _auto_flush_timer(self) -> None:
         """백그라운드 타이머로 주기적 플러시"""
@@ -168,79 +132,40 @@ class RealtimeBatchCollector:
                 if not self._is_running:
                     break
 
-                # 배치별 개별 시간 기준 플러시 (세밀한 제어)
+                # 배치별 개별 시간 기준 플러시
                 current_time = time.time()
-
-                # 각 배치 타입별로 개별 타이머 체크
-                for batch_type in ["ticker", "orderbook", "trade"]:
+                for msg_type in MESSAGE_TYPES:
                     if (
-                        current_time - self._batch_timers[batch_type]
-                    ) >= self.time_window:
-                        batch_size = (
-                            len(self._ticker_batch)
-                            if batch_type == "ticker"
-                            else (
-                                len(self._orderbook_batch)
-                                if batch_type == "orderbook"
-                                else len(self._trade_batch)
-                            )
-                        )
-
-                        if batch_size > 0:
-                            await self._flush_single_batch(batch_type)
+                        current_time - self._batch_timers[msg_type] >= self.time_window
+                        and self._batches[msg_type]
+                    ):
+                        await self._flush_single_batch(msg_type)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Auto flush timer error: {e}")
-                await asyncio.sleep(1)  # 에러 시 1초 대기
+                await asyncio.sleep(ERROR_RETRY_DELAY)
 
     async def _flush_single_batch(self, message_type: str) -> None:
-        """단일 타입 배치 플러시"""
-        current_time = time.time()
+        """단일 타입 배치 플러시 (성능 최적화: 참조 교체)"""
+        if message_type not in self._batches:
+            return
 
-        if message_type == "ticker" and self._ticker_batch:
-            batch = self._ticker_batch.copy()
-            self._ticker_batch.clear()
-            if self.emit_factory:
-                await self.emit_factory("ticker", batch, int(current_time * 1000))
+        batch = self._batches[message_type]
+        if not batch or not self.emit_factory:
+            return
 
-        elif message_type == "orderbook" and self._orderbook_batch:
-            batch = self._orderbook_batch.copy()
-            self._orderbook_batch.clear()
-            if self.emit_factory:
-                await self.emit_factory("orderbook", batch, int(current_time * 1000))
-
-        elif message_type == "trade" and self._trade_batch:
-            batch = self._trade_batch.copy()
-            self._trade_batch.clear()
-            if self.emit_factory:
-                await self.emit_factory("trade", batch, int(current_time * 1000))
+        # 참조 교체로 copy() 오버헤드 제거
+        self._batches[message_type] = deque(maxlen=self.max_batch_size)
+        await self.emit_factory(batch)
 
     async def _flush_batches(self, force: bool = False) -> None:
         """모든 배치 플러시"""
-        current_time = time.time()
+        for msg_type in MESSAGE_TYPES:
+            await self._flush_single_batch(msg_type)
 
-        # 각 타입별로 배치가 있으면 전송
-        if self._ticker_batch:
-            batch = self._ticker_batch.copy()
-            self._ticker_batch.clear()
-            if self.emit_factory:
-                await self.emit_factory("ticker", batch, int(current_time * 1000))
-
-        if self._orderbook_batch:
-            batch = self._orderbook_batch.copy()
-            self._orderbook_batch.clear()
-            if self.emit_factory:
-                await self.emit_factory("orderbook", batch, int(current_time * 1000))
-
-        if self._trade_batch:
-            batch = self._trade_batch.copy()
-            self._trade_batch.clear()
-            if self.emit_factory:
-                await self.emit_factory("trade", batch, int(current_time * 1000))
-
-        self._last_flush_time = current_time
+        self._last_flush_time = time.time()
 
         if force:
             logger.debug("Realtime batches flushed (force=True)")
@@ -249,8 +174,4 @@ class RealtimeBatchCollector:
 
     def get_batch_status(self) -> dict[str, int]:
         """현재 배치 상태 조회 (디버깅용)"""
-        return {
-            "ticker": len(self._ticker_batch),
-            "orderbook": len(self._orderbook_batch),
-            "trade": len(self._trade_batch),
-        }
+        return {msg_type: len(self._batches[msg_type]) for msg_type in MESSAGE_TYPES}

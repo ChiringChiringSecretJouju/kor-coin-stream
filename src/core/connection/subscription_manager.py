@@ -5,8 +5,10 @@ from typing import Any
 
 import orjson
 
+from src.common.exceptions.error_dto_builder import (
+    make_ws_error_event_from_kind,
+)
 from src.common.logger import PipelineLogger
-from src.core.dto.adapter.error_adapter import make_ws_error_event_from_kind
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.subscription import (
     SubscriptionStateDomain,

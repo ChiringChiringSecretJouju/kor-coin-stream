@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+from enum import Enum
 from typing import TypeAlias
 
 from kafka.errors import KafkaConnectionError, KafkaProtocolError, NoBrokersAvailable
@@ -198,3 +200,123 @@ def classify_exception(err: BaseException, kind: str) -> ErrorCategory:
 
     # 알 수 없는 경우 기본값
     return (ErrorDomain.UNKNOWN, ErrorCode.UNKNOWN_ERROR, False)
+
+
+# ============================================================================
+# 에러 처리 전략 (EDA 환경용)
+# ============================================================================
+
+
+class ErrorSeverity(Enum):
+    """에러 심각도 분류"""
+
+    CRITICAL = "critical"  # 즉시 대응 필요, ws.error 필수
+    WARNING = "warning"  # 모니터링 필요, ws.error 권장
+    INFO = "info"  # 로깅만, 재시도 가능
+
+
+@dataclass(slots=True, frozen=True)
+class ErrorStrategy:
+    """에러 처리 전략
+
+    EDA 환경에서 에러 발생 시 어떻게 처리할지 정의합니다.
+    """
+
+    severity: ErrorSeverity
+    send_to_ws_error: bool  # ws.error 토픽 발행 여부
+    send_to_dlq: bool  # DLQ 전송 여부
+    log_level: str = "error"  # 로그 레벨
+    circuit_break: bool = False  # Circuit Breaker 트리거 여부
+    alert: bool = False  # 알람 발송 여부 (Slack/PagerDuty)
+
+
+# 에러 코드별 기본 전략
+ERROR_STRATEGIES: dict[ErrorCode, ErrorStrategy] = {
+    # ========== CRITICAL 에러들 (즉시 대응 필요) ==========
+    ErrorCode.CONNECT_FAILED: ErrorStrategy(
+        severity=ErrorSeverity.CRITICAL,
+        send_to_ws_error=True,
+        send_to_dlq=False,
+        log_level="critical",
+        circuit_break=True,  # 5회 실패 시 Circuit Open
+        alert=True,  # 즉시 알람
+    ),
+    ErrorCode.DISCONNECT_FAILED: ErrorStrategy(
+        severity=ErrorSeverity.CRITICAL,
+        send_to_ws_error=True,
+        send_to_dlq=False,
+        log_level="critical",
+        circuit_break=False,
+        alert=True,
+    ),
+    ErrorCode.UNKNOWN_ERROR: ErrorStrategy(
+        severity=ErrorSeverity.CRITICAL,
+        send_to_ws_error=True,
+        send_to_dlq=True,  # 원인 파악용
+        log_level="critical",
+        circuit_break=False,
+        alert=True,
+    ),
+    ErrorCode.DLQ_PUBLISH_FAILED: ErrorStrategy(
+        severity=ErrorSeverity.CRITICAL,
+        send_to_ws_error=True,
+        send_to_dlq=False,  # DLQ 자체 실패는 DLQ로 보내지 않음
+        log_level="critical",
+        circuit_break=False,
+        alert=True,
+    ),
+    # ========== WARNING 에러들 (모니터링 필요) ==========
+    ErrorCode.DESERIALIZATION_ERROR: ErrorStrategy(
+        severity=ErrorSeverity.WARNING,
+        send_to_ws_error=True,
+        send_to_dlq=True,  # 파싱 실패 메시지는 DLQ로
+        log_level="warning",
+    ),
+    ErrorCode.INVALID_SCHEMA: ErrorStrategy(
+        severity=ErrorSeverity.WARNING,
+        send_to_ws_error=True,
+        send_to_dlq=True,  # 스키마 불일치 메시지는 DLQ로
+        log_level="error",
+    ),
+    ErrorCode.MISSING_FIELD: ErrorStrategy(
+        severity=ErrorSeverity.WARNING,
+        send_to_ws_error=True,
+        send_to_dlq=True,  # 필드 누락 메시지는 DLQ로
+        log_level="warning",
+    ),
+    ErrorCode.CACHE_CONFLICT: ErrorStrategy(
+        severity=ErrorSeverity.WARNING,
+        send_to_ws_error=True,
+        send_to_dlq=False,  # 캐시 문제는 일시적
+        log_level="warning",
+    ),
+    # ========== INFO 에러들 (로깅만, 자동 복구 가능) ==========
+    ErrorCode.ORCHESTRATOR_ERROR: ErrorStrategy(
+        severity=ErrorSeverity.INFO,
+        send_to_ws_error=False,  # 내부 로직, 외부 노출 불필요
+        send_to_dlq=False,
+        log_level="info",
+    ),
+    ErrorCode.ALREADY_CONNECTED: ErrorStrategy(
+        severity=ErrorSeverity.INFO,
+        send_to_ws_error=False,  # 정상 범위 (중복 요청)
+        send_to_dlq=False,
+        log_level="info",
+    ),
+}
+
+
+def get_error_strategy(code: ErrorCode) -> ErrorStrategy:
+    """에러 코드에 대한 처리 전략 조회
+
+    등록되지 않은 에러 코드는 기본 전략(WARNING) 반환
+    """
+    return ERROR_STRATEGIES.get(
+        code,
+        ErrorStrategy(
+            severity=ErrorSeverity.WARNING,
+            send_to_ws_error=True,
+            send_to_dlq=False,
+            log_level="warning",
+        ),
+    )
