@@ -46,6 +46,7 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
     def _parse_message(self, message: str | bytes | dict[str, Any]) -> dict[str, Any]:
         """메시지 파싱 공통 로직 (안전한 JSON 파싱)"""
+        print(message)
         try:
             # 이미 dict인 경우 그대로 반환
             if isinstance(message, dict):
@@ -236,7 +237,6 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
                 (enabled={self._batch_enabled}, collector={self._batch_collector is not None})
                 """
             )
-
         return filtered_message
 
     async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:

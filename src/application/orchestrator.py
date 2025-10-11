@@ -41,6 +41,7 @@ from src.exchange.korea import (
 )
 from src.exchange.na import CoinbaseWebsocketHandler, KrakenWebsocketHandler
 from src.infra.cache.cache_store import WebsocketConnectionCache
+from src.infra.messaging.connect.producer_client import ErrorEventProducer
 
 logger = PipelineLogger.get_logger("orchestrator_refactored", "app")
 
@@ -78,6 +79,14 @@ HANDLER_MAP: Final[dict[str, type[ExchangeSocketHandler]]] = {
     "kraken": KrakenWebsocketHandler,
 }
 
+# 단일 구독 전용 거래소 (각 심볼마다 별도 WebSocket 연결 필요)
+SINGLE_SUBSCRIPTION_ONLY: Final[frozenset[str]] = frozenset(
+    {
+        "coinone",  # 한국 - 단일 심볼만 구독 지원
+        "huobi",  # 아시아 - 단일 심볼만 구독 지원
+    }
+)
+
 
 class StreamOrchestrator:
     """리팩토링된 스트림 오케스트레이터
@@ -93,24 +102,55 @@ class StreamOrchestrator:
 
         각 컴포넌트의 책임을 명확히 분리합니다.
         """
+        # Producer 초기화 (ErrorCoordinator에서 사용)
+        self._error_producer = ErrorEventProducer(use_avro=False)
+
         # 핵심 컴포넌트들 (책임 분리)
         self._registry = ConnectionRegistry()
-        self._error_coordinator = ErrorCoordinator()
+        self._error_coordinator = ErrorCoordinator(error_producer=self._error_producer)
 
         # 기존 컴포넌트들 (이미 잘 분리됨)
         self._connector = WebsocketConnector(HANDLER_MAP)
         self._cache = RedisCacheCoordinator()
         self._subs = SubscriptionManager()
 
+        # Producer 시작 상태 추적
+        self._producer_started = False
+
+    async def startup(self) -> None:
+        """오케스트레이터 시작 (Producer 시작)"""
+        if not self._producer_started:
+            await self._error_producer.start_producer()
+            self._producer_started = True
+            logger.info("ErrorEventProducer started")
+
     async def connect_from_context(self, ctx: StreamContextDomain) -> None:
         """컨텍스트 기반 연결 생성
 
         리팩토링된 버전: 각 컴포넌트의 책임을 명확히 분리
+
+        단일 구독 거래소(Coinone, Huobi) 처리:
+        - 여러 심볼이 있으면 각 심볼마다 별도 연결 생성
+        - scope에 symbol 정보 포함하여 Redis 키 충돌 방지
         """
         start_time = datetime.now()
         logger.info(
             f"{ctx.scope.exchange} 연결 시작: {start_time.strftime('%Y-%m-%d %H:%M:%S')}"
         )
+
+        # 0. 단일 구독 거래소 자동 분리 처리
+        if ctx.scope.exchange.lower() in SINGLE_SUBSCRIPTION_ONLY:
+            if len(ctx.symbols) > 1:
+                logger.info(
+                    f"{ctx.scope.exchange}는 단일 구독만 지원 → "
+                    f"{len(ctx.symbols)}개 심볼을 개별 연결로 분리"
+                )
+                await self._connect_multiple_symbols(ctx)
+                return
+            elif len(ctx.symbols) == 1:
+                # 단일 심볼이면 scope에 symbol 추가
+                ctx = self._add_symbol_to_context(ctx, ctx.symbols[0])
+                logger.info(f"{ctx.scope.exchange} 단일 심볼 연결: {ctx.scope.symbol}")
 
         # 1. 중복 연결 확인 (레지스트리 책임)
         if self._registry.is_running(ctx.scope):
@@ -167,6 +207,15 @@ class StreamOrchestrator:
         """
         await self._registry.shutdown_all()
 
+        # Circuit Breaker 정리
+        await self._error_coordinator.cleanup()
+
+        # Producer 정리
+        if self._producer_started:
+            await self._error_producer.stop_producer()
+            self._producer_started = False
+            logger.info("ErrorEventProducer stopped")
+
     async def _run_connection_task(
         self,
         ctx: StreamContextDomain,
@@ -216,6 +265,84 @@ class StreamOrchestrator:
                 error=e,
                 socket_params=ctx.socket_params,
             )
+
+    async def _connect_multiple_symbols(self, ctx: StreamContextDomain) -> None:
+        """단일 구독 거래소용: 여러 심볼을 개별 연결로 분리 (내부 메서드)
+
+        Args:
+            ctx: 원본 컨텍스트 (여러 심볼 포함)
+
+        Note:
+            단일 구독 거래소는 재구독이 불가능하므로, 중복 연결 시 스킵합니다.
+        """
+        for symbol in ctx.symbols:
+            # 각 심볼마다 별도 컨텍스트 생성
+            single_ctx = self._add_symbol_to_context(ctx, symbol)
+
+            logger.info(f"  → {ctx.scope.exchange} 개별 연결 생성: {symbol}")
+
+            # 재귀 호출하지 않고 직접 연결 로직 수행
+            try:
+                # 중복 연결 확인 (단일 구독 거래소는 재구독 불가)
+                if self._registry.is_running(single_ctx.scope):
+                    logger.info(
+                        f"  → {symbol}: 이미 연결 중 - 스킵 "
+                        f"(단일 구독 거래소는 재구독 불가)"
+                    )
+                    continue
+
+                # 핸들러 생성
+                handler = self._connector.create_handler_with(
+                    single_ctx.scope, single_ctx.projection
+                )
+
+                # 캐시 준비
+                cache = self._cache.make_cache_with(single_ctx)
+                await self._cache.on_start_with(single_ctx, cache)
+
+                # 연결 태스크 생성
+                task = asyncio.create_task(
+                    self._run_connection_task(single_ctx, handler, cache),
+                    name=f"ws-{single_ctx.scope.exchange}-{single_ctx.scope.region}-"
+                    f"{single_ctx.scope.request_type}-{symbol}",
+                )
+
+                # 레지스트리 등록
+                self._registry.register_connection(single_ctx.scope, task, handler)
+
+                logger.info(f"  → {symbol}: 연결 태스크 시작됨")
+
+            except Exception as e:
+                await self._error_coordinator.emit_connection_error(
+                    scope=single_ctx.scope, error=e, phase="multi_symbol_connect"
+                )
+
+    def _add_symbol_to_context(
+        self, ctx: StreamContextDomain, symbol: str
+    ) -> StreamContextDomain:
+        """컨텍스트에 symbol 정보 추가 (내부 메서드)
+
+        Args:
+            ctx: 원본 컨텍스트
+            symbol: 추가할 심볼
+
+        Returns:
+            symbol이 포함된 새로운 컨텍스트
+        """
+        new_scope = ConnectionScopeDomain(
+            exchange=ctx.scope.exchange,
+            region=ctx.scope.region,
+            request_type=ctx.scope.request_type,
+            symbol=symbol,  # 심볼 추가
+        )
+
+        return StreamContextDomain(
+            scope=new_scope,
+            url=ctx.url,
+            socket_params=ctx.socket_params,
+            symbols=(symbol,),  # 단일 심볼만
+            projection=ctx.projection,
+        )
 
 
 # 기존 컴포넌트들 (이미 잘 분리되어 있음 - 그대로 유지)

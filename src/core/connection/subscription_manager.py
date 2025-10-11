@@ -5,9 +5,7 @@ from typing import Any
 
 import orjson
 
-from src.common.exceptions.error_dto_builder import (
-    make_ws_error_event_from_kind,
-)
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.subscription import (
@@ -41,18 +39,18 @@ class SubscriptionManager:
     async def _emit_error(
         self, err: BaseException, *, phase: str, extra: dict | None = None
     ) -> None:
-        """구독 단계 오류를 표준 에러 이벤트로 발행한다."""
+        """구독 단계 오류를 통합 에러 디스패처로 발행한다."""
         target = ConnectionTargetDTO(
             exchange=self.scope.exchange,
             region=self.scope.region,
             request_type=self.scope.request_type,
         )
-        await make_ws_error_event_from_kind(
+        context = {"phase": phase, **(extra or {})}
+        await dispatch_error(
+            exc=err if isinstance(err, Exception) else Exception(str(err)),
+            kind="subscription",
             target=target,
-            err=err,
-            kind="ws",
-            observed_key=self._observed_key(),
-            raw_context={"phase": phase, **(extra or {})},
+            context=context,
         )
 
     async def prepare_subscription_message(self, params: SocketParams) -> str:

@@ -4,9 +4,7 @@ import asyncio
 import time
 from typing import Any, Literal
 
-from src.common.exceptions.error_dto_builder import (
-    make_ws_error_event_from_kind,
-)
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
 from src.core.dto.io.target import ConnectionTargetDTO
@@ -54,28 +52,24 @@ class ConnectionHealthMonitor:
     async def _emit_error(
         self, err: BaseException, *, phase: str, extra: dict | None = None
     ) -> None:
-        """헬스 모니터 단계 오류를 표준 에러 이벤트로 발행한다."""
-        observed_key = (
-            f"{self.scope.exchange}/{self.scope.region}/{self.scope.request_type}"
-        )
+        """헬스 모니터 단계 오류를 통합 에러 디스패처로 발행한다."""
         target = ConnectionTargetDTO(
             exchange=self.scope.exchange,
             region=self.scope.region,
             request_type=self.scope.request_type,
         )
-        raw_context: dict = {
+        context: dict = {
             "phase": phase,
             "heartbeat_kind": self.policy.heartbeat_kind,
             "heartbeat_timeout": self.policy.heartbeat_timeout,
             "heartbeat_fail_count": self._heartbeat_fail_count,
             **(extra or {}),
         }
-        await make_ws_error_event_from_kind(
+        await dispatch_error(
+            exc=err if isinstance(err, Exception) else Exception(str(err)),
+            kind="health_monitor",
             target=target,
-            err=err,
-            kind="ws",
-            observed_key=observed_key,
-            raw_context=raw_context,
+            context=context,
         )
 
     async def send_heartbeat(self, websocket: Any) -> None:

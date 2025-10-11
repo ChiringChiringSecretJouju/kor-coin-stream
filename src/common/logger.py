@@ -166,14 +166,38 @@ class PipelineLogger:
         """
         log_extra = {"component": self.component or "main", "exchange": "global"}
 
-        # 컨텍스트 및 추가 정보 병합
-        if self.context:
+        # exc_info, stack_info는 logger.log()의 파라미터로 추출
+        exc_info_param = None
+        stack_info_param = None
+        
+        if extra:
+            # logging 파라미터 추출 (exc_info, stack_info)
+            exc_info_param = extra.pop("exc_info", None)
+            stack_info_param = extra.pop("stack_info", None)
+            
+            # 'extra' 키가 있으면 그 내용을 풀어서 병합
+            if "extra" in extra:
+                nested_extra = extra.pop("extra")
+                if isinstance(nested_extra, dict):
+                    log_extra.update(nested_extra)
+            
+            # 나머지 컨텍스트 병합
+            if self.context:
+                log_extra.update(self.context)
+            
+            # 남은 extra 병합
+            log_extra.update(extra)
+        elif self.context:
             log_extra.update(self.context)
 
-        if extra:
-            log_extra.update(extra)
-
-        self.logger.log(level, msg, extra=log_extra)
+        # exc_info, stack_info를 파라미터로 전달
+        self.logger.log(
+            level, 
+            msg, 
+            exc_info=exc_info_param, 
+            stack_info=stack_info_param,
+            extra=log_extra
+        )
 
     async def alog(self, level: int, msg: str, **kwargs) -> None:
         """

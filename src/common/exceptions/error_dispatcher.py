@@ -52,11 +52,20 @@ class ErrorDispatcher:
     4. DLQ 전송
     5. Circuit Breaker (Redis 기반 분산)
     6. 알람
+    
+    Note: ErrorEventProducer와 DlqProducer를 내부에서 관리하며,
+          producer=None으로 호출 시 자동으로 생성합니다.
     """
 
-    def __init__(self, dlq_producer: DlqProducer | None = None):
+    def __init__(
+        self,
+        error_producer: ErrorEventProducer | None = None,
+        dlq_producer: DlqProducer | None = None,
+    ):
+        self._error_producer = error_producer
         self.dlq_producer = dlq_producer
         self._circuit_breakers: dict[str, RedisCircuitBreaker] = {}  # 서킷브레이커 캐시
+        self._producer_created = False  # 내부 생성 여부 추적
 
     async def dispatch(
         self,
@@ -76,6 +85,13 @@ class ErrorDispatcher:
         # 3. 로깅 (severity별)
         log_method = getattr(logger, strategy.log_level, logger.error)
         observed_key = f"{target.exchange}/{target.region}/{target.request_type}"
+        
+        # context에서 logging 예약 키워드 제거 (exc_info, stack_info 등)
+        safe_context = {
+            k: v for k, v in (context or {}).items() 
+            if k not in ("exc_info", "stack_info", "extra")
+        }
+        
         log_method(
             f"[{strategy.severity.value.upper()}] {kind} error: {exc}",
             exc_info=True,
@@ -87,12 +103,20 @@ class ErrorDispatcher:
                 "severity": strategy.severity.value,
                 "retryable": retryable,
                 "observed_key": observed_key,
-                **(context or {}),
+                **safe_context,
             },
         )
 
         # 4. ws.error 발행 (전략에 따라)
         if strategy.send_to_ws_error:
+            # Producer 결정: 파라미터 > 인스턴스 변수 > 새로 생성
+            actual_producer = producer or self._error_producer
+            if actual_producer is None:
+                self._error_producer = ErrorEventProducer(use_avro=False)
+                await self._error_producer.start_producer()
+                self._producer_created = True
+                actual_producer = self._error_producer
+            
             try:
                 await make_ws_error_event_from_kind(
                     target=target,
@@ -100,7 +124,7 @@ class ErrorDispatcher:
                     kind=kind,
                     observed_key=observed_key,
                     raw_context=context,
-                    producer=producer,
+                    producer=actual_producer,
                 )
             except Exception as e:
                 logger.error(f"Failed to send ws.error: {e}", exc_info=True)
@@ -267,14 +291,26 @@ class ErrorDispatcher:
         )
 
     async def cleanup(self) -> None:
-        """서킷브레이커 리소스 정리
+        """리소스 정리 (서킷브레이커, 내부 Producer)
 
         애플리케이션 종료 시 호출
         """
+        # Circuit Breaker 정리
         for breaker in self._circuit_breakers.values():
             await breaker.stop()
         self._circuit_breakers.clear()
         logger.info("All circuit breakers cleaned up")
+        
+        # 내부에서 생성한 Producer 정리
+        if self._producer_created and self._error_producer is not None:
+            try:
+                await self._error_producer.stop_producer()
+                logger.info("Internal ErrorEventProducer stopped")
+            except Exception as e:
+                logger.warning(f"Failed to stop internal producer: {e}")
+            finally:
+                self._error_producer = None
+                self._producer_created = False
 
 
 # 하위 호환성을 위한 함수

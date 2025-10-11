@@ -4,9 +4,7 @@ import asyncio
 from typing import Any, Final, cast
 
 from src.application.orchestrator import StreamOrchestrator
-from src.common.exceptions.error_dto_builder import (
-    make_ws_error_event_from_kind,
-)
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.dto.io.commands import DisconnectCommandDTO
 from src.core.dto.io.target import ConnectionTargetDTO
@@ -110,13 +108,12 @@ class KafkaDisconnectionConsumerClient:
                 except Exception:
                     continue
 
-                observed_key = f"{exchange}/{region}/{request_type}|disconnect"
-                await make_ws_error_event_from_kind(
+                context = {"phase": "disconnect", "payload": payload}
+                await dispatch_error(
+                    exc=exc if isinstance(exc, Exception) else Exception(str(exc)),
+                    kind="consumer",
                     target=target,
-                    err=exc,
-                    kind="ws",
-                    observed_key=observed_key,
-                    raw_context=payload,
+                    context=context,
                 )
 
     async def run(self) -> None:

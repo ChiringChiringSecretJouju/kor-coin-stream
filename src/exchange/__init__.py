@@ -5,7 +5,7 @@ from .korea import (
     UpbitWebsocketHandler,
 )
 
-WorldWebSocket = (
+WKoreanExchangeHandler = (
     UpbitWebsocketHandler
     | KorbitWebsocketHandler
     | BithumbWebsocketHandler
@@ -13,7 +13,7 @@ WorldWebSocket = (
 )
 
 __all__ = [
-    "WorldWebSocket",
+    "WKoreanExchangeHandler",
     "UpbitWebsocketHandler",
     "KorbitWebsocketHandler",
     "BithumbWebsocketHandler",

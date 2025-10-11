@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from src.common.exceptions.error_dto_builder import (
-    make_ws_error_event_from_kind,
-)
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.dto.internal.common import ConnectionScopeDomain
@@ -90,16 +88,17 @@ class ConnectSuccessAckEmitter:
                 )
                 # ACK 전송 실패를 ws.error로도 발행하여 관측 가능성 확보
                 try:
-                    await make_ws_error_event_from_kind(
-                        target=self._target,
-                        err=e,
+                    context = {
+                        "phase": "ack_emit",
+                        "symbol": coin,
+                        "key": key,
+                        "error_message": str(e),
+                    }
+                    await dispatch_error(
+                        exc=e if isinstance(e, Exception) else Exception(str(e)),
                         kind="ack",
-                        observed_key=f"ack:{self._observed_key}|{coin}",
-                        raw_context={
-                            "symbol": coin,
-                            "key": key,
-                            "error_message": str(e),
-                        },
+                        target=self._target,
+                        context=context,
                     )
                 except Exception:
                     # 에러 발행 자체 실패는 무시(로그만 남김)

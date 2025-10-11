@@ -213,3 +213,5 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
         """연결 종료 시 배치 시스템 정리"""
         await self._cleanup_batch_system()
         await super().disconnect()
+
+

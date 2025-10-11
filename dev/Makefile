@@ -1,13 +1,20 @@
 # 암호화폐 거래소 웹소켓 연결 자동화 Makefile
 # 10개 거래소를 지역별로 병렬 실행
+#
+# 단일 구독 거래소 (Coinone, Huobi):
+#   - 여러 심볼 요청 시 자동으로 심볼별 개별 연결 생성
+#   - 예: SYMBOLS=BTC,ETH,XRP → 3개의 독립적인 WebSocket 연결
+#   - Redis 키: ws:connection:coinone:korea:ticker:BTC (심볼 포함)
 
 .PHONY: help all korea asia na eu clean stop ticker orderbook trade batch-test consumer-start consumer-stop \
 	all-ticker all-orderbook all-trade korea-ticker korea-orderbook korea-trade \
 	asia-ticker asia-orderbook asia-trade na-ticker na-orderbook na-trade \
 	eu-ticker eu-orderbook eu-trade upbit-ticker upbit-orderbook upbit-trade \
 	bithumb-ticker bithumb-orderbook bithumb-trade coinone-ticker coinone-orderbook coinone-trade \
-	korbit-ticker korbit-orderbook korbit-trade binance-ticker binance-orderbook binance-trade \
-	huobi-ticker huobi-orderbook huobi-trade bybit-ticker bybit-orderbook bybit-trade \
+	korbit-ticker korbit-orderbook korbit-trade gopax-ticker gopax-orderbook gopax-trade \
+	binance-ticker binance-orderbook binance-trade \
+	huobi-ticker huobi-orderbook huobi-trade mexc-ticker mexc-orderbook mexc-trade \
+	bybit-ticker bybit-orderbook bybit-trade \
 	gateio-ticker gateio-orderbook gateio-trade okx-ticker okx-orderbook okx-trade \
 	coinbase-ticker coinbase-orderbook coinbase-trade kraken-ticker kraken-orderbook kraken-trade \
 	bitfinex-ticker bitfinex-orderbook bitfinex-trade
@@ -68,12 +75,13 @@ all-trade: ## 모든 거래소 trade 연결
 	@$(MAKE) eu-trade &
 	@wait
 
-korea: ## 한국 거래소 연결 (4개) - ticker만
+korea: ## 한국 거래소 연결 (5개) - ticker만
 	@echo "$(GREEN)🇰🇷 한국 거래소 연결 중...$(NC)"
 	@$(MAKE) upbit &
 	@$(MAKE) bithumb &
-	@$(MAKE) coinone &
+	@$(MAKE) coinone &  # 단일 구독 거래소 - 자동으로 심볼별 연결 분리
 	@$(MAKE) korbit &
+	@$(MAKE) gopax &
 	@wait
 
 # 지역별 + 메시지 타입별 연결
@@ -82,6 +90,7 @@ korea-ticker: ## 한국 거래소 ticker 연결
 	@$(MAKE) bithumb-ticker &
 	@$(MAKE) coinone-ticker &
 	@$(MAKE) korbit-ticker &
+	@$(MAKE) gopax-ticker &
 	@wait
 
 korea-orderbook: ## 한국 거래소 orderbook 연결
@@ -89,6 +98,7 @@ korea-orderbook: ## 한국 거래소 orderbook 연결
 	@$(MAKE) bithumb-orderbook &
 	@$(MAKE) coinone-orderbook &
 	@$(MAKE) korbit-orderbook &
+	@$(MAKE) gopax-orderbook &
 	@wait
 
 korea-trade: ## 한국 거래소 trade 연결
@@ -96,12 +106,14 @@ korea-trade: ## 한국 거래소 trade 연결
 	@$(MAKE) bithumb-trade &
 	@$(MAKE) coinone-trade &
 	@$(MAKE) korbit-trade &
+	@$(MAKE) gopax-trade &
 	@wait
 
-asia: ## 아시아 거래소 연결 (5개) - ticker만
+asia: ## 아시아 거래소 연결 (6개) - ticker만
 	@echo "$(GREEN)🌏 아시아 거래소 연결 중...$(NC)"
 	@$(MAKE) binance &
-	@$(MAKE) huobi &
+	@$(MAKE) huobi &  # 단일 구독 거래소 - 자동으로 심볼별 연결 분리
+	@$(MAKE) mexc &
 	@$(MAKE) bybit &
 	@$(MAKE) gateio &
 	@$(MAKE) okx &
@@ -110,6 +122,7 @@ asia: ## 아시아 거래소 연결 (5개) - ticker만
 asia-ticker: ## 아시아 거래소 ticker 연결
 	@$(MAKE) binance-ticker &
 	@$(MAKE) huobi-ticker &
+	@$(MAKE) mexc-ticker &
 	@$(MAKE) bybit-ticker &
 	@$(MAKE) gateio-ticker &
 	@$(MAKE) okx-ticker &
@@ -118,6 +131,7 @@ asia-ticker: ## 아시아 거래소 ticker 연결
 asia-orderbook: ## 아시아 거래소 orderbook 연결
 	@$(MAKE) binance-orderbook &
 	@$(MAKE) huobi-orderbook &
+	@$(MAKE) mexc-orderbook &
 	@$(MAKE) bybit-orderbook &
 	@$(MAKE) gateio-orderbook &
 	@$(MAKE) okx-orderbook &
@@ -126,6 +140,7 @@ asia-orderbook: ## 아시아 거래소 orderbook 연결
 asia-trade: ## 아시아 거래소 trade 연결
 	@$(MAKE) binance-trade &
 	@$(MAKE) huobi-trade &
+	@$(MAKE) mexc-trade &
 	@$(MAKE) bybit-trade &
 	@$(MAKE) gateio-trade &
 	@$(MAKE) okx-trade &
@@ -152,18 +167,18 @@ na-trade: ## 북미 거래소 trade 연결
 	@$(MAKE) kraken-trade &
 	@wait
 
-eu: ## 유럽 거래소 연결 (1개) - ticker만
-	@echo "$(GREEN)🇪🇺 유럽 거래소 연결 중...$(NC)"
-	@$(MAKE) bitfinex
+# eu: ## 유럽 거래소 연결 (1개) - ticker만
+# 	@echo "$(GREEN)🇪🇺 유럽 거래소 연결 중...$(NC)"
+# 	@$(MAKE) bitfinex
 
-eu-ticker: ## 유럽 거래소 ticker 연결
-	@$(MAKE) bitfinex-ticker
+# eu-ticker: ## 유럽 거래소 ticker 연결
+# 	@$(MAKE) bitfinex-ticker
 
-eu-orderbook: ## 유럽 거래소 orderbook 연결
-	@$(MAKE) bitfinex-orderbook
+# eu-orderbook: ## 유럽 거래소 orderbook 연결
+# 	@$(MAKE) bitfinex-orderbook
 
-eu-trade: ## 유럽 거래소 trade 연결
-	@$(MAKE) bitfinex-trade
+# eu-trade: ## 유럽 거래소 trade 연결
+# 	@$(MAKE) bitfinex-trade
 
 # 한국 거래소들
 upbit: ## Upbit 연결 (ticker)
@@ -238,8 +253,8 @@ bithumb-trade: ## Bithumb trade 연결
 		--request-type trade \
 		--subscribe-type trade
 
-coinone: ## Coinone 연결 (ticker)
-	@echo "$(YELLOW)📈 Coinone 연결 중...$(NC)"
+coinone: ## Coinone 연결 (ticker) - 단일 구독: 자동으로 심볼별 연결 분리
+	@echo "$(YELLOW)📈 Coinone 연결 중... (단일 구독 거래소)$(NC)"
 	@$(PYTHON) producer_main.py \
 		--exchange coinone \
 		--symbols $(SYMBOLS) \
@@ -247,8 +262,8 @@ coinone: ## Coinone 연결 (ticker)
 		--request-type $(REQUEST_TYPE) \
 		--subscribe-type $(SUBSCRIBE_TYPE)
 
-coinone-ticker: ## Coinone ticker 연결
-	@echo "$(YELLOW)📊 Coinone ticker 연결 중...$(NC)"
+coinone-ticker: ## Coinone ticker 연결 - 자동으로 심볼별 연결 분리
+	@echo "$(YELLOW)📊 Coinone ticker 연결 중... (단일 구독 거래소)$(NC)"
 	@$(PYTHON) producer_main.py \
 		--exchange coinone \
 		--symbols $(SYMBOLS) \
@@ -310,6 +325,42 @@ korbit-trade: ## Korbit trade 연결
 		--request-type trade \
 		--subscribe-type trade
 
+gopax: ## Gopax 연결 (ticker)
+	@echo "$(YELLOW)📈 Gopax 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange gopax \
+		--symbols $(SYMBOLS) \
+		--region korea \
+		--request-type $(REQUEST_TYPE) \
+		--subscribe-type $(SUBSCRIBE_TYPE)
+
+gopax-ticker: ## Gopax ticker 연결
+	@echo "$(YELLOW)📊 Gopax ticker 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange gopax \
+		--symbols $(SYMBOLS) \
+		--region korea \
+		--request-type ticker \
+		--subscribe-type ticker
+
+gopax-orderbook: ## Gopax orderbook 연결
+	@echo "$(YELLOW)📈 Gopax orderbook 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange gopax \
+		--symbols $(SYMBOLS) \
+		--region korea \
+		--request-type orderbook \
+		--subscribe-type orderbook
+
+gopax-trade: ## Gopax trade 연결
+	@echo "$(YELLOW)💰 Gopax trade 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange gopax \
+		--symbols $(SYMBOLS) \
+		--region korea \
+		--request-type trade \
+		--subscribe-type trade
+
 # 아시아 거래소들
 binance: ## Binance 연결 (ticker)
 	@echo "$(YELLOW)📈 Binance 연결 중...$(NC)"
@@ -347,8 +398,8 @@ binance-trade: ## Binance trade 연결
 		--request-type trade \
 		--subscribe-type trade
 
-huobi: ## Huobi 연결 (ticker)
-	@echo "$(YELLOW)📈 Huobi 연결 중...$(NC)"
+huobi: ## Huobi 연결 (ticker) - 단일 구독: 자동으로 심볼별 연결 분리
+	@echo "$(YELLOW)📈 Huobi 연결 중... (단일 구독 거래소)$(NC)"
 	@$(PYTHON) producer_main.py \
 		--exchange huobi \
 		--symbols $(SYMBOLS) \
@@ -356,8 +407,8 @@ huobi: ## Huobi 연결 (ticker)
 		--request-type $(REQUEST_TYPE) \
 		--subscribe-type $(SUBSCRIBE_TYPE)
 
-huobi-ticker: ## Huobi ticker 연결
-	@echo "$(YELLOW)📊 Huobi ticker 연결 중...$(NC)"
+huobi-ticker: ## Huobi ticker 연결 - 자동으로 심볼별 연결 분리
+	@echo "$(YELLOW)📊 Huobi ticker 연결 중... (단일 구독 거래소)$(NC)"
 	@$(PYTHON) producer_main.py \
 		--exchange huobi \
 		--symbols $(SYMBOLS) \
@@ -378,6 +429,42 @@ huobi-trade: ## Huobi trade 연결
 	@echo "$(YELLOW)💰 Huobi trade 연결 중...$(NC)"
 	@$(PYTHON) producer_main.py \
 		--exchange huobi \
+		--symbols $(SYMBOLS) \
+		--region asia \
+		--request-type trade \
+		--subscribe-type trade
+
+mexc: ## MEXC 연결 (ticker)
+	@echo "$(YELLOW)📈 MEXC 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange mexc \
+		--symbols $(SYMBOLS) \
+		--region asia \
+		--request-type $(REQUEST_TYPE) \
+		--subscribe-type $(SUBSCRIBE_TYPE)
+
+mexc-ticker: ## MEXC ticker 연결
+	@echo "$(YELLOW)📊 MEXC ticker 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange mexc \
+		--symbols $(SYMBOLS) \
+		--region asia \
+		--request-type ticker \
+		--subscribe-type ticker
+
+mexc-orderbook: ## MEXC orderbook 연결
+	@echo "$(YELLOW)📈 MEXC orderbook 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange mexc \
+		--symbols $(SYMBOLS) \
+		--region asia \
+		--request-type orderbook \
+		--subscribe-type orderbook
+
+mexc-trade: ## MEXC trade 연결
+	@echo "$(YELLOW)💰 MEXC trade 연결 중...$(NC)"
+	@$(PYTHON) producer_main.py \
+		--exchange mexc \
 		--symbols $(SYMBOLS) \
 		--region asia \
 		--request-type trade \
@@ -565,41 +652,41 @@ kraken-trade: ## Kraken trade 연결
 		--subscribe-type trade
 
 # 유럽 거래소들
-bitfinex: ## Bitfinex 연결 (ticker)
-	@echo "$(YELLOW)📈 Bitfinex 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange bitfinex \
-		--symbols $(SYMBOLS) \
-		--region eu \
-		--request-type $(REQUEST_TYPE) \
-		--subscribe-type $(SUBSCRIBE_TYPE)
+# bitfinex: ## Bitfinex 연결 (ticker)
+# 	@echo "$(YELLOW)📈 Bitfinex 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange bitfinex \
+# 		--symbols $(SYMBOLS) \
+# 		--region eu \
+# 		--request-type $(REQUEST_TYPE) \
+# 		--subscribe-type $(SUBSCRIBE_TYPE)
 
-bitfinex-ticker: ## Bitfinex ticker 연결
-	@echo "$(YELLOW)📊 Bitfinex ticker 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange bitfinex \
-		--symbols $(SYMBOLS) \
-		--region eu \
-		--request-type ticker \
-		--subscribe-type ticker
+# bitfinex-ticker: ## Bitfinex ticker 연결
+# 	@echo "$(YELLOW)📊 Bitfinex ticker 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange bitfinex \
+# 		--symbols $(SYMBOLS) \
+# 		--region eu \
+# 		--request-type ticker \
+# 		--subscribe-type ticker
 
-bitfinex-orderbook: ## Bitfinex orderbook 연결
-	@echo "$(YELLOW)📈 Bitfinex orderbook 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange bitfinex \
-		--symbols $(SYMBOLS) \
-		--region eu \
-		--request-type orderbook \
-		--subscribe-type orderbook
+# bitfinex-orderbook: ## Bitfinex orderbook 연결
+# 	@echo "$(YELLOW)📈 Bitfinex orderbook 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange bitfinex \
+# 		--symbols $(SYMBOLS) \
+# 		--region eu \
+# 		--request-type orderbook \
+# 		--subscribe-type orderbook
 
-bitfinex-trade: ## Bitfinex trade 연결
-	@echo "$(YELLOW)💰 Bitfinex trade 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange bitfinex \
-		--symbols $(SYMBOLS) \
-		--region eu \
-		--request-type trade \
-		--subscribe-type trade
+# bitfinex-trade: ## Bitfinex trade 연결
+# 	@echo "$(YELLOW)💰 Bitfinex trade 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange bitfinex \
+# 		--symbols $(SYMBOLS) \
+# 		--region eu \
+# 		--request-type trade \
+# 		--subscribe-type trade
 
 # 유틸리티 명령어들
 test: ## 단일 거래소 테스트 (Upbit)

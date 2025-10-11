@@ -20,9 +20,7 @@ import uuid
 
 from redis.asyncio import Redis
 
-from src.common.exceptions.error_dto_builder import (
-    make_ws_error_event_from_kind,
-)
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.config.settings import redis_settings
 from src.core.dto.internal.cache import (
@@ -326,11 +324,10 @@ class WebsocketConnectionCache:
             region=self.region,
             request_type=self.request_type,
         )
-        observed = f"{self.exchange}/{self.region}/{self.request_type}"
-        await make_ws_error_event_from_kind(
-            target=target,
-            err=err,
+        context = {"phase": "redis_operation"}
+        await dispatch_error(
+            exc=err if isinstance(err, Exception) else Exception(str(err)),
             kind="redis",
-            observed_key=observed,
-            raw_context=None,
+            target=target,
+            context=context,
         )

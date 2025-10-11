@@ -154,3 +154,5 @@ class KorbitWebsocketHandler(BaseKoreaWebsocketHandler):
 
         # 공통 처리는 부모 클래스에 위임 (단, 이미 전처리된 메시지 전달)
         return await super().ticker_message(preprocessed_message)
+
+

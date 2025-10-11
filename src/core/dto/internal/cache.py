@@ -39,18 +39,28 @@ class ConnectionMetaDomain:
 
 @dataclass(slots=True, frozen=True, repr=False, match_args=False, kw_only=True)
 class ConnectionKeyBuilderDomain:
-    """연결 스코프별 Redis 키 빌더."""
+    """연결 스코프별 Redis 키 빌더.
+    
+    - 단일 구독 거래소(Coinone, Huobi)는 symbol이 키에 포함됨
+    - 예: ws:connection:coinone:korea:ticker:BTC
+    """
 
     scope: ConnectionScopeDomain
 
     def meta(self) -> str:
-        return f"ws:connection:{self.scope.exchange}:{self.scope.region}:{self.scope.request_type}"
+        base = f"ws:connection:{self.scope.exchange}:{self.scope.region}:{self.scope.request_type}"
+        if self.scope.symbol:
+            return f"{base}:{self.scope.symbol}"
+        return base
 
     def symbols(self) -> str:
-        return (
+        base = (
             f"ws:connection:{self.scope.exchange}:{self.scope.region}:"
-            f"{self.scope.request_type}:symbols"
+            f"{self.scope.request_type}"
         )
+        if self.scope.symbol:
+            return f"{base}:{self.scope.symbol}:symbols"
+        return f"{base}:symbols"
 
 
 @dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)

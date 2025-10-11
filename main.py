@@ -31,6 +31,7 @@ async def main() -> None:
     redis_mgr = RedisConnectionManager.get_instance()
     await redis_mgr.initialize()
     orchestrator = StreamOrchestrator()
+    await orchestrator.startup()  # Producer 시작
 
     command_consumer = KafkaConsumerClient(
         orchestrator=orchestrator,

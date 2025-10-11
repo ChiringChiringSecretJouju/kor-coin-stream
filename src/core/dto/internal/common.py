@@ -17,16 +17,20 @@ from src.core.types import (
 class ConnectionScopeDomain:
     """연결 스코프(내부 도메인 값 객체).
 
-    - (exchange, region, request_type) 조합을 공통 타입으로 정의
+    - (exchange, region, request_type, symbol?) 조합을 공통 타입으로 정의
     - Redis 키 생성, 캐시 스펙 등에서 재사용
+    - symbol: 단일 구독 전용 거래소(Coinone, Huobi)에서 심볼별 연결 구분에 사용
     """
 
     region: Region
     exchange: ExchangeName
     request_type: RequestType
+    symbol: str | None = None  # 단일 구독 거래소 전용
 
     def to_key(self) -> str:
-        """스코프를 Kafka 키로 변환 (region|exchange|request_type 형식)"""
+        """스코프를 Kafka 키로 변환 (region|exchange|request_type|symbol? 형식)"""
+        if self.symbol:
+            return f"{self.region}|{self.exchange}|{self.request_type}|{self.symbol}"
         return f"{self.region}|{self.exchange}|{self.request_type}"
 
 
