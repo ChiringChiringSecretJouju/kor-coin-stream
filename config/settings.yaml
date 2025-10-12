@@ -1,0 +1,120 @@
+# ========================================
+# Dependency Injection 설정 파일 (개발 환경)
+# ========================================
+# 
+# 이 파일은 ApplicationContainer에서 로드됩니다.
+# 환경별로 dev.yaml, prod.yaml 등으로 분리 가능합니다.
+#
+# Note:
+#   - 인프라 설정(Redis, Kafka, Logging 등)은 config/infra/*.yaml 참조
+#   - 이 파일은 DI Container 전용 설정만 포함 (토픽, 핸들러 등)
+
+# ===== Messaging Layer =====
+messaging:
+  # Kafka Producer 설정
+  use_avro: false  # 개발 환경은 JSON (디버깅 용이), 프로덕션은 true
+
+# ===== Kafka Topics (DI Container 전용) =====
+# Note: Kafka 브로커/Producer/Consumer 설정은 config/infra/kafka.yaml 참조
+kafka:  
+  status_topic:
+    - ws.status.korea
+    - ws.status.na
+    - ws.status.eu
+    - ws.status.asia
+  
+  disconnection_topic:
+    - ws.disconnection.korea
+    - ws.disconnection.na
+    - ws.disconnection.eu
+    - ws.disconnection.asia
+  
+  event_topic:
+    - ws.event
+  
+  # Producer 토픽 (단일 토픽)
+  error_topic: ws.error
+  dlq_topic: ws.dlq
+  backpressure_topic: ws.backpressure.events
+
+# ===== Handler Configuration =====
+# 각 거래소별 세부 설정 (heartbeat 타입, 활성화 여부 등)
+
+handlers:
+  # ========================================
+  # 한국 거래소 (Korea)
+  # ========================================
+  upbit:
+    enabled: true
+    region: korea
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null
+  
+  bithumb:
+    enabled: true
+    region: korea
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null
+  
+  coinone:
+    enabled: true
+    region: korea
+    heartbeat_kind: text  # 텍스트 메시지
+    heartbeat_message: '{"request_type":"PING"}'
+  
+  korbit:
+    enabled: true
+    region: korea
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null
+  
+  # ========================================
+  # 아시아 거래소 (Asia)
+  # ========================================
+  binance:
+    enabled: true
+    region: asia
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null
+  
+  bybit:
+    enabled: true
+    region: asia
+    heartbeat_kind: text  # 텍스트 메시지
+    heartbeat_message: '{"op":"ping"}'
+  
+  okx:
+    enabled: true
+    region: asia
+    heartbeat_kind: text  # 텍스트 메시지
+    heartbeat_message: "ping"
+  
+  huobi:
+    enabled: true
+    region: asia
+    heartbeat_kind: text  # 텍스트 메시지 (동적 timestamp)
+    heartbeat_message: '{"ping": 1}'  # 실제로는 동적으로 생성됨
+  
+  # ========================================
+  # 유럽 거래소 (Europe)
+  # ========================================
+  bitfinex:
+    enabled: true
+    region: europe
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null
+  
+  # ========================================
+  # 북미 거래소 (North America)
+  # ========================================
+  coinbase:
+    enabled: true
+    region: na
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null
+  
+  kraken:
+    enabled: true
+    region: na
+    heartbeat_kind: frame  # ping/pong 프레임
+    heartbeat_message: null

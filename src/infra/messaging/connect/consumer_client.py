@@ -9,8 +9,7 @@ from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.dto.adapter.stream_context import adapter_stream_context
 from src.core.dto.internal.orchestrator import StreamContextDomain
-from src.core.dto.io.commands import CommandDTO
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import CommandDTO, ConnectionTargetDTO
 from src.core.types import ExchangeName, PayloadAction, PayloadType, Region, RequestType
 from src.infra.messaging.clients.json_client import create_consumer
 from src.infra.messaging.connect.services.cache_coordinator import CacheCoordinator
@@ -59,8 +58,8 @@ class KafkaConsumerClient:
                     f"받음: {payload.get('action')}"
                 )
                 return False
-            case (type_val, _):
-                logger.debug(f"무시: type!={PayloadType.STATUS}, 받음: {type_val}")
+            case _:
+                logger.debug(f"무시: type!={PayloadType.STATUS}, 받음: {payload.get('type')}")
                 return False
 
     async def _enqueue_connect_task(
@@ -73,7 +72,11 @@ class KafkaConsumerClient:
                 await self.orchestrator.connect_from_context(validated)
 
                 # ✅ 성공 시 오프셋 저장 (메모리에만, 초고속)
-                if raw_msg := record.get("_raw_msg"):
+                if (
+                    (raw_msg := record.get("_raw_msg"))
+                    and self.consumer is not None
+                    and self.consumer.consumer is not None
+                ):
                     self.consumer.consumer.store_offsets(message=raw_msg)
 
             except Exception as e:

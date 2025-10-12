@@ -117,7 +117,7 @@ class SchemaEvolutionManager:
     def __init__(self) -> None:
         """Schema Registry 클라이언트 초기화"""
         self.registry = SchemaRegistryClient(
-            {"url": kafka_settings.SCHEMA_REGISTRY_URL}
+            {"url": kafka_settings.schema_register}
         )
 
     def set_compatibility(
@@ -147,7 +147,7 @@ class SchemaEvolutionManager:
             )
         except Exception as e:
             logger.error(
-                f"스키마 호환성 설정 실패",
+                "스키마 호환성 설정 실패",
                 extra={"subject": subject, "level": level.value, "error": str(e)},
             )
             raise
@@ -166,7 +166,7 @@ class SchemaEvolutionManager:
             return CompatibilityLevel(config)
         except Exception as e:
             logger.warning(
-                f"스키마 호환성 조회 실패 (기본값 BACKWARD 사용)",
+                "스키마 호환성 조회 실패 (기본값 BACKWARD 사용)",
                 extra={"subject": subject, "error": str(e)},
             )
             return CompatibilityLevel.BACKWARD
@@ -206,19 +206,19 @@ class SchemaEvolutionManager:
             
             if result:
                 logger.info(
-                    f"스키마 호환성 검증 성공",
+                    "스키마 호환성 검증 성공",
                     extra={"subject": subject},
                 )
             else:
                 logger.warning(
-                    f"스키마 호환성 검증 실패",
+                    "스키마 호환성 검증 실패",
                     extra={"subject": subject},
                 )
             
             return result
         except Exception as e:
             logger.error(
-                f"스키마 호환성 테스트 실패",
+                "스키마 호환성 테스트 실패",
                 extra={"subject": subject, "error": str(e)},
             )
             return False
@@ -237,7 +237,7 @@ class SchemaEvolutionManager:
             return versions
         except Exception as e:
             logger.error(
-                f"스키마 버전 조회 실패",
+                "스키마 버전 조회 실패",
                 extra={"subject": subject, "error": str(e)},
             )
             return []

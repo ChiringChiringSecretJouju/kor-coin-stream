@@ -6,8 +6,7 @@ from typing import Any, Final, cast
 from src.application.orchestrator import StreamOrchestrator
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
-from src.core.dto.io.commands import DisconnectCommandDTO
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO, DisconnectCommandDTO
 from src.core.types import ExchangeName, PayloadAction, PayloadType, Region, RequestType
 from src.infra.messaging.clients.json_client import AsyncConsumerWrapper, create_consumer
 from src.infra.messaging.connect.services.command_validator import GenericValidator
@@ -45,13 +44,18 @@ class KafkaDisconnectionConsumerClient:
             case (PayloadType.STATUS, _):
                 logger.debug("disconnect 컨슈머 무시: action!=disconnect")
                 return False
-            case (type_value, _):
+            case _:
                 logger.debug(
-                    f"disconnect 컨슈머 무시: type!={PayloadType.STATUS}, 받음: {type_value}"
+                    f"disconnect 컨슈머 무시: type!={PayloadType.STATUS}, "
+                    f"받음: {payload.get('type')}"
                 )
                 return False
 
     async def _consume_stream(self) -> None:
+        if self.consumer is None:
+            logger.warning("Consumer not initialized")
+            return
+        
         async for record in self.consumer:
             payload: dict = record["value"]
             exchange = payload.get("target", {}).get("exchange", "")
@@ -64,8 +68,7 @@ class KafkaDisconnectionConsumerClient:
 
                 if not (exchange and region and request_type):
                     logger.warning(
-                        "disconnect 이벤트에 target 필드가 부족하여 무시합니다: %s",
-                        payload,
+                        f"disconnect 이벤트에 target 필드가 부족하여 무시합니다: {payload}"
                     )
                     continue
 

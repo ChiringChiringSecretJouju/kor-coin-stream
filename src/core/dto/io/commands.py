@@ -1,14 +1,32 @@
+"""명령 및 대상 DTO 통합 모듈
+
+연결 명령, 연결 성공, 대상 정보 등 명령 관련 모든 DTO를 포함합니다.
+"""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field, StrictStr, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, StringConstraints
 
 from src.core.dto.io._base import BaseIOModelDTO
-from src.core.dto.io.target import ConnectionTargetDTO
-from src.core.types import DEFAULT_SCHEMA_VERSION, SocketParams
+from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, RequestType, SocketParams
+
+# ========================================
+# 대상 (Target)
+# ========================================
+
+
+class ConnectionTargetDTO(BaseModel):
+    """이벤트 대상(Target) Pydantic v2 모델."""
+
+    exchange: ExchangeName
+    region: Region
+    request_type: RequestType
+
+    model_config = ConfigDict(use_enum_values=True, extra="forbid")
 
 # --- Strict and constrained DTOs for connect-success event ---
 # Pydantic v2: 검증단 빡빡하게 (StrictStr + StringConstraints)

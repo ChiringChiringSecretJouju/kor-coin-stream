@@ -8,6 +8,7 @@
 - Circuit Breaker (Redis 기반 분산 서킷브레이커)
 - 알람
 """
+
 from __future__ import annotations
 
 import traceback
@@ -23,8 +24,8 @@ from src.common.exceptions.exception_rule import (
     get_error_strategy,
 )
 from src.common.logger import PipelineLogger
-from src.core.dto.io.dlq_event import DlqEventDTO
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
+from src.core.dto.io.events import DlqEventDTO
 from src.infra.messaging.connect.producer_client import DlqProducer, ErrorEventProducer
 
 from .error_dto_builder import (
@@ -52,7 +53,7 @@ class ErrorDispatcher:
     4. DLQ 전송
     5. Circuit Breaker (Redis 기반 분산)
     6. 알람
-    
+
     Note: ErrorEventProducer와 DlqProducer를 내부에서 관리하며,
           producer=None으로 호출 시 자동으로 생성합니다.
     """
@@ -85,13 +86,14 @@ class ErrorDispatcher:
         # 3. 로깅 (severity별)
         log_method = getattr(logger, strategy.log_level, logger.error)
         observed_key = f"{target.exchange}/{target.region}/{target.request_type}"
-        
+
         # context에서 logging 예약 키워드 제거 (exc_info, stack_info 등)
         safe_context = {
-            k: v for k, v in (context or {}).items() 
+            k: v
+            for k, v in (context or {}).items()
             if k not in ("exc_info", "stack_info", "extra")
         }
-        
+
         log_method(
             f"[{strategy.severity.value.upper()}] {kind} error: {exc}",
             exc_info=True,
@@ -116,7 +118,7 @@ class ErrorDispatcher:
                 await self._error_producer.start_producer()
                 self._producer_created = True
                 actual_producer = self._error_producer
-            
+
             try:
                 await make_ws_error_event_from_kind(
                     target=target,
@@ -300,7 +302,7 @@ class ErrorDispatcher:
             await breaker.stop()
         self._circuit_breakers.clear()
         logger.info("All circuit breakers cleaned up")
-        
+
         # 내부에서 생성한 Producer 정리
         if self._producer_created and self._error_producer is not None:
             try:
@@ -313,14 +315,33 @@ class ErrorDispatcher:
                 self._producer_created = False
 
 
-# 하위 호환성을 위한 함수
+# Event Bus 기반 에러 디스패처 (EDA 패턴)
 async def dispatch_error(
     exc: Exception,
     kind: str,
     target: ConnectionTargetDTO,
     context: dict | None = None,
-    producer: ErrorEventProducer | None = None,
 ) -> None:
-    """하위 호환성을 위한 래퍼 함수"""
-    dispatcher = ErrorDispatcher()
-    await dispatcher.dispatch(exc, kind, target, context, producer)
+    """Event Bus 기반 에러 이벤트 발행 (EDA 패턴)
+
+    모든 레이어에서 순환 import 없이 사용 가능:
+    - Infrastructure: Kafka, Redis, Avro 에러
+    - Domain: WebSocket, 구독, 헬스체크 에러
+    - Application: 비즈니스 로직 에러
+
+    Args:
+        exc: 발생한 예외
+        kind: 에러 종류 (분류용)
+        target: 에러 발생 대상
+        context: 추가 컨텍스트
+    """
+    from src.common.events import ErrorEvent, EventBus
+
+    await EventBus.emit(
+        ErrorEvent(
+            exc=exc,
+            kind=kind,
+            target=target,
+            context=context,
+        )
+    )

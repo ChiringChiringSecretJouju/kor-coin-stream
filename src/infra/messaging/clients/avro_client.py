@@ -12,7 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.common.events import ErrorEvent, EventBus
+from src.core.dto.io.commands import ConnectionTargetDTO
 from src.infra.messaging.avro.serializers import (
     AsyncAvroDeserializer,
     AsyncAvroSerializer,
@@ -146,20 +147,21 @@ class AvroConsumerWrapper(AsyncConsumerBase):
                         value_bytes, key_bytes, topic, raw_msg
                     )
             except Exception as e:
-                # 통합 에러 처리 (분류 → 로깅 → ws.error 발행)
-                from src.common.exceptions.error_dispatcher import dispatch_error
-                await dispatch_error(
-                    exc=e,
-                    kind="avro_deserialization",
-                    target=ConnectionTargetDTO(
-                        exchange="system",
-                        region="internal",
-                        request_type="avro_consumer",
-                    ),
-                    context={
-                        "topic": topic,
-                        "value_bytes_len": len(value_bytes) if value_bytes else 0,
-                    },
+                # ✅ 에러 이벤트 발행 (순환 import 없음!)
+                await EventBus.emit(
+                    ErrorEvent(
+                        exc=e,
+                        kind="avro_deserialization",
+                        target=ConnectionTargetDTO(
+                            exchange="system",
+                            region="internal",
+                            request_type="avro_consumer",
+                        ),
+                        context={
+                            "topic": topic,
+                            "value_bytes_len": len(value_bytes) if value_bytes else 0,
+                        },
+                    )
                 )
 
         # 이벤트 루프에 안전하게 태스크 스케줄 및 트래킹 등록
@@ -325,7 +327,7 @@ def create_avro_consumer(
         >>> await consumer.start()
         >>> async for message in consumer:
         ...     ticker_data = message["value"]  # 자동 Avro 역직렬화됨
-        ...     print(f"Price: {ticker_data['last']}")
+        ...     (f"Price: {ticker_data['last']}")
         >>> await consumer.stop()
     """
     overrides.setdefault("auto.offset.reset", "latest")

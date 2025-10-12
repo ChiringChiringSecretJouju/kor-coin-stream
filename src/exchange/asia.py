@@ -9,12 +9,15 @@ from src.core.types import TickerResponseData
 
 
 class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
-    """바이낸스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """바이낸스 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Binance는 일반적으로 ping/pong 프레임 사용
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -43,12 +46,15 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
 
 
 class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
-    """바이비트 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """바이비트 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Bybit은 ping 메시지 전송 방식 사용
-        self.set_heartbeat(kind="text", message='{"op":"ping"}')
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -84,12 +90,15 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
 
 
 class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
-    """후오비(HTX) 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """후오비(HTX) 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Huobi는 ping 메시지 전송 방식 사용
-        self.set_heartbeat(kind="text", message='{"ping": 1}')
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -169,12 +178,15 @@ class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
 
 
 class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
-    """오케이엑스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """오케이엑스 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # OKX는 ping 메시지 전송 방식 사용
-        self.set_heartbeat(kind="text", message="ping")
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:

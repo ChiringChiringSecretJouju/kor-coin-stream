@@ -6,8 +6,11 @@ from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.dto.internal.common import ConnectionScopeDomain
-from src.core.dto.io.commands import ConnectSuccessEventDTO, ConnectSuccessMetaDTO
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import (
+    ConnectionTargetDTO,
+    ConnectSuccessEventDTO,
+    ConnectSuccessMetaDTO,
+)
 from src.infra.messaging.connect.producer_client import ConnectSuccessEventProducer
 
 logger = PipelineLogger.get_logger("ack_emitter", "connection")

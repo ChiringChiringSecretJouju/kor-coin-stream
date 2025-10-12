@@ -11,11 +11,15 @@ logger = PipelineLogger.get_logger("korea_handlers", "exchange")
 
 
 class UpbitWebsocketHandler(BaseKoreaWebsocketHandler):
-    """업비트 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """업비트 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -45,11 +49,15 @@ class UpbitWebsocketHandler(BaseKoreaWebsocketHandler):
 
 
 class BithumbWebsocketHandler(BaseKoreaWebsocketHandler):
-    """빗썸 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """빗썸 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -79,11 +87,15 @@ class BithumbWebsocketHandler(BaseKoreaWebsocketHandler):
 
 
 class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
-    """코인원 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """코인원 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.set_heartbeat(kind="text", message='{"request_type":"PING"}')
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -120,11 +132,15 @@ class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
 
 
 class KorbitWebsocketHandler(BaseKoreaWebsocketHandler):
-    """코빗 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """코빗 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
 
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:

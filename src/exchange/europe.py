@@ -41,12 +41,15 @@ class BitfinexTickerData:
 
 
 class BitfinexWebsocketHandler(BaseGlobalWebsocketHandler):
-    """비트파이넥스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """비트파이넥스 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Bitfinex는 ping/pong 프레임 사용
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
         # 구독된 심볼 정보를 저장 (channel_id -> symbol 매핑)
         self._channel_symbol_map: dict[int, str] = {}
     

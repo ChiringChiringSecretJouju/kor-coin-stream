@@ -30,7 +30,7 @@ class RedisConnectionManager:
             logger.info(f"Redis 연결 시도: {url}")
             self._redis = redis.from_url(
                 url=url,
-                socket_timeout=redis_settings.CONNECTION_TIMEOUT,
+                socket_timeout=redis_settings.connection_timeout,
             )
             await self._redis.ping()
             logger.info("Redis 연결 성공")

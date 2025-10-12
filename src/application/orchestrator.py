@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Final, TypeAlias
+from typing import Any, Final, TypeAlias
 
 # 새로운 컴포넌트들
 from src.application.connection_registry import ConnectionRegistry
@@ -18,66 +18,20 @@ from src.common.logger import PipelineLogger
 from src.core.dto.internal.cache import WebsocketConnectionSpecDomain
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.orchestrator import StreamContextDomain
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     CONNECTION_STATUS_CONNECTED,
     CONNECTION_STATUS_DISCONNECTED,
     SocketParams,
 )
-from src.exchange.asia import (
-    BinanceWebsocketHandler,
-    BybitWebsocketHandler,
-    HuobiWebsocketHandler,
-    OKXWebsocketHandler,
-)
-from src.exchange.europe import BitfinexWebsocketHandler
-
-# 기존 컴포넌트들 (이미 잘 분리됨)
-from src.exchange.korea import (
-    BithumbWebsocketHandler,
-    CoinoneWebsocketHandler,
-    KorbitWebsocketHandler,
-    UpbitWebsocketHandler,
-)
-from src.exchange.na import CoinbaseWebsocketHandler, KrakenWebsocketHandler
 from src.infra.cache.cache_store import WebsocketConnectionCache
 from src.infra.messaging.connect.producer_client import ErrorEventProducer
 
 logger = PipelineLogger.get_logger("orchestrator_refactored", "app")
 
-# 타입 정의
-ExchangeSocketHandler: TypeAlias = (
-    UpbitWebsocketHandler
-    | BithumbWebsocketHandler
-    | CoinoneWebsocketHandler
-    | KorbitWebsocketHandler
-    | BinanceWebsocketHandler
-    | BybitWebsocketHandler
-    | OKXWebsocketHandler
-    | HuobiWebsocketHandler
-    | BitfinexWebsocketHandler
-    | CoinbaseWebsocketHandler
-    | KrakenWebsocketHandler
-)
-
-# 거래소별 웹소켓 핸들러 매핑
-HANDLER_MAP: Final[dict[str, type[ExchangeSocketHandler]]] = {
-    # 한국 거래소
-    "upbit": UpbitWebsocketHandler,
-    "bithumb": BithumbWebsocketHandler,
-    "coinone": CoinoneWebsocketHandler,
-    "korbit": KorbitWebsocketHandler,
-    # 아시아 거래소
-    "binance": BinanceWebsocketHandler,
-    "bybit": BybitWebsocketHandler,
-    "okx": OKXWebsocketHandler,
-    "huobi": HuobiWebsocketHandler,
-    # 유럽 거래소
-    "bitfinex": BitfinexWebsocketHandler,
-    # 북미 거래소
-    "coinbase": CoinbaseWebsocketHandler,
-    "kraken": KrakenWebsocketHandler,
-}
+# 타입 정의: Any handler (DI Container에서 주입)
+# FactoryAggregate가 동적으로 핸들러를 반환하므로 Any 사용
+ExchangeSocketHandler: TypeAlias = Any
 
 # 단일 구독 전용 거래소 (각 심볼마다 별도 WebSocket 연결 필요)
 SINGLE_SUBSCRIPTION_ONLY: Final[frozenset[str]] = frozenset(
@@ -89,40 +43,72 @@ SINGLE_SUBSCRIPTION_ONLY: Final[frozenset[str]] = frozenset(
 
 
 class StreamOrchestrator:
-    """리팩토링된 스트림 오케스트레이터
+    """리팩토링된 스트림 오케스트레이터 (DI 적용)
 
-    책임을 명확히 분리하여 단일 책임 원칙을 준수합니다.
+    Dependency Injection으로 모든 의존성을 주입받습니다.
+    
+    책임:
     - 연결 레지스트리: 태스크/핸들러 관리
     - 에러 코디네이터: 에러 처리 통합
     - 기존 컴포넌트들: 각자의 책임 유지
+    
+    DI Features:
+    - 모든 의존성을 생성자에서 주입
+    - 테스트 시 Mock 주입 가능
+    - Resource provider가 Producer 라이프사이클 자동 관리
     """
 
-    def __init__(self) -> None:
-        """오케스트레이터 초기화
-
-        각 컴포넌트의 책임을 명확히 분리합니다.
+    def __init__(
+        self,
+        error_producer: ErrorEventProducer,
+        registry: ConnectionRegistry,
+        error_coordinator: ErrorCoordinator,
+        connector: WebsocketConnector,
+        cache: RedisCacheCoordinator,
+        subs: SubscriptionManager,
+    ) -> None:
+        """오케스트레이터 초기화 (DI)
+        
+        Args:
+            error_producer: 에러 이벤트 프로듀서 (Resource로 자동 관리)
+            registry: 연결 레지스트리
+            error_coordinator: 에러 코디네이터
+            connector: 웹소켓 커넥터 (FactoryAggregate 포함)
+            cache: Redis 캐시 코디네이터
+            subs: 구독 관리자
         """
-        # Producer 초기화 (ErrorCoordinator에서 사용)
-        self._error_producer = ErrorEventProducer(use_avro=False)
-
-        # 핵심 컴포넌트들 (책임 분리)
-        self._registry = ConnectionRegistry()
-        self._error_coordinator = ErrorCoordinator(error_producer=self._error_producer)
-
-        # 기존 컴포넌트들 (이미 잘 분리됨)
-        self._connector = WebsocketConnector(HANDLER_MAP)
-        self._cache = RedisCacheCoordinator()
-        self._subs = SubscriptionManager()
+        # ✅ 의존성이 자동으로 주입됨!
+        self._error_producer = error_producer
+        self._registry = registry
+        self._error_coordinator = error_coordinator
+        self._connector = connector
+        self._cache = cache
+        self._subs = subs
 
         # Producer 시작 상태 추적
+        # Note: Resource provider가 자동으로 start_producer를 호출하므로
+        # 이 플래그는 레거시 호환성을 위해 유지
         self._producer_started = False
 
     async def startup(self) -> None:
-        """오케스트레이터 시작 (Producer 시작)"""
+        """오케스트레이터 시작 (DI 모드)
+        
+        Note:
+            DI 모드에서는 Resource provider가 자동으로 start_producer를 호출합니다.
+            이 메서드는 하위 호환성을 위해 유지하지만, 실제로는 아무 작업도 하지 않습니다.
+            
+            레거시 모드 (DI 미사용):
+                await orchestrator.startup()  # Producer 수동 시작
+            
+            DI 모드 (권장):
+                await container.init_resources()  # 모든 Resource 자동 시작
+        """
         if not self._producer_started:
-            await self._error_producer.start_producer()
+            # DI 모드에서는 이미 시작되어 있으므로 플래그만 설정
             self._producer_started = True
-            logger.info("ErrorEventProducer started")
+            logger.info(
+                "StreamOrchestrator.startup() called (DI mode: Producer already started)"
+            )
 
     async def connect_from_context(self, ctx: StreamContextDomain) -> None:
         """컨텍스트 기반 연결 생성
@@ -347,29 +333,86 @@ class StreamOrchestrator:
 
 # 기존 컴포넌트들 (이미 잘 분리되어 있음 - 그대로 유지)
 class WebsocketConnector:
-    """웹소켓 연결 및 핸들러 생성 책임"""
+    """웹소켓 연결 및 핸들러 생성 책임 (DI 지원)
+    
+    Features:
+    - FactoryAggregate 지원: 동적 핸들러 생성
+    - 하위 호환성: dict 기반 handler_map도 지원
+    - DI Container로부터 handler_factory 주입 가능
+    """
 
-    def __init__(self, handler_map: dict[str, type[ExchangeSocketHandler]]) -> None:
-        self.handler_map = handler_map or HANDLER_MAP
+    def __init__(
+        self,
+        handler_map: dict[str, type[ExchangeSocketHandler]] | None = None,
+    ) -> None:
+        """
+        Args:
+            handler_map: 핸들러 매핑 (dict 또는 FactoryAggregate)
+                - dict: 기존 방식 (하위 호환성)
+                - FactoryAggregate: DI 컨테이너에서 주입 (권장)
+        """
+        # handler_factory는 FactoryAggregate (DI Container에서 주입)
+        # None인 경우 에러를 발생시켜야 함 (DI 없이는 동작 불가)
+        if handler_map is None:
+            raise ValueError(
+                "handler_map is required. Use DI Container to inject FactoryAggregate."
+            )
+        self.handler_factory = handler_map
 
     def get_handler_class(self, exchange: str) -> type[ExchangeSocketHandler] | None:
-        return self.handler_map.get(exchange.lower())
+        """핸들러 클래스 조회 (레거시 호환성)
+        
+        Note: DI 모드에서는 사용되지 않음 (FactoryAggregate는 클래스를 반환하지 않음)
+        """
+        return None  # DI 모드에서는 항상 None
 
     def create_handler_with(
         self, scope: ConnectionScopeDomain, projection: list[str] | None = None
     ) -> ExchangeSocketHandler:
-        handler_class = self.get_handler_class(scope.exchange)
-        if not handler_class:
-            raise ValueError(f"Unsupported exchange: {scope.exchange}")
-        handler = handler_class(
-            exchange_name=scope.exchange,
-            region=scope.region,
-            request_type=scope.request_type,
-        )
+        """핸들러 생성 (FactoryAggregate 또는 dict 지원)
+        
+        Args:
+            scope: 연결 스코프
+            projection: 프로젝션 필드
+            
+        Returns:
+            생성된 핸들러 인스턴스
+            
+        Raises:
+            ValueError: 지원하지 않는 거래소
+        """
+        exchange_key = scope.exchange.lower()
+        
+        # FactoryAggregate인 경우: 함수처럼 호출
+        # dict인 경우: 클래스를 가져와서 직접 인스턴스화
+        try:
+            if isinstance(self.handler_factory, dict):
+                # 기존 방식 (dict)
+                handler_class = self.handler_factory.get(exchange_key)
+                if not handler_class:
+                    raise ValueError(f"Unsupported exchange: {scope.exchange}")
+                handler = handler_class(
+                    exchange_name=scope.exchange,
+                    region=scope.region,
+                    request_type=scope.request_type,
+                )
+            else:
+                # FactoryAggregate 방식 (DI)
+                # FactoryAggregate는 callable이므로 직접 호출
+                handler = self.handler_factory(
+                    exchange_key,
+                    request_type=scope.request_type,
+                )
+        except (KeyError, ValueError, TypeError) as e:
+            raise ValueError(
+                f"Failed to create handler for {scope.exchange}: {e}"
+            ) from e
+        
         # projection 필드 설정
         if hasattr(handler, "projection"):
             handler.projection = projection
             logger.info(f"{scope.exchange}: Projection set to {projection}")
+        
         return handler
 
     async def run_with(

@@ -12,14 +12,15 @@ from src.common.logger import PipelineLogger
 # NOTE: confluent-kafka 기반으로 직렬화 처리 (기존 aiokafka 방식에서 마이그레이션)
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.metrics import MinuteItemDomain
-from src.core.dto.io.backpressure_event import (
+from src.core.dto.io.commands import ConnectRequestDTO, ConnectSuccessEventDTO
+from src.core.dto.io.data import RealtimeDataBatchDTO
+from src.core.dto.io.events import (
     BackpressureEventDTO,
     BackpressureStatusDTO,
+    DlqEventDTO,
+    WsErrorEventDTO,
 )
-from src.core.dto.io.commands import ConnectRequestDTO, ConnectSuccessEventDTO
-from src.core.dto.io.counting import CountingBatchDTO, MarketCountingDTO
-from src.core.dto.io.dlq_event import DlqEventDTO
-from src.core.dto.io.error_event import WsErrorEventDTO
+from src.core.dto.io.metrics import CountingBatchDTO, MarketCountingDTO, MinuteItemDTO
 from src.core.types import (
     OrderbookResponseData,
     TickerResponseData,
@@ -188,7 +189,7 @@ class AvroProducer:
 
             # Producer 시작
             started = await self.start_producer()
-            if not started:
+            if not started or self.producer is None:
                 logger.warning(
                     f"Kafka Producer not started; skipping send to topic '{topic}'"
                 )
@@ -214,9 +215,9 @@ class AvroProducer:
                         await asyncio.sleep(0.1 * attempt)  # 지수 백오프
                     else:
                         logger.error(f"All {retries} send attempts failed: {e}")
-                        raise
+                        return False  # 모든 재시도 실패
 
-            return False  # 모든 재시도 실패
+            return False  # while 루프 정상 종료 시 (도달 불가)
 
         finally:
             if stop_after_send:
@@ -247,36 +248,44 @@ class ConnectRequestProducer(AvroProducer):
 
 class ErrorEventProducer(AvroProducer):
     """
-    통합 에러 이벤트 프로듀서 (리팩토링됨).
+    통합 에러 이벤트 프로듀서 (리팩토링됨, DI 주입).
 
-    - ws.error 토픽으로 웹소켓/데이터 에러 전송
+    - 토픽은 DI Container에서 주입받음
     - 실시간 에러 모니터링 및 디버깅 지원
     - use_avro=True: AvroProducerWrapper (error-events-value 스키마)
     - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
     - 부모 클래스 기반 고성능 비동기 전송 및 배치 처리
     """
 
+    def __init__(self, topic: str = "ws.error", use_avro: bool = False) -> None:
+        super().__init__(use_avro=use_avro)
+        self.topic = topic
+
     async def send_error_event(
         self, event: WsErrorEventDTO, key: KeyType = None
     ) -> bool:
         return await self.produce_sending(
             message=event,
-            topic="ws.error",
+            topic=self.topic,
             key=key,
         )
 
 
 class DlqProducer(AvroProducer):
     """
-    통합 Dead Letter Queue 프로듀서 (리팩토링됨).
+    통합 Dead Letter Queue 프로듀서 (리팩토링됨, DI 주입).
 
-    - ws.dlq 토픽으로 처리 실패 메시지 전송
+    - 토픽은 DI Container에서 주입받음
     - 원본 메시지 + 실패 사유 포함
     - 장애 분석 및 데이터 복구를 위한 안전망
     - use_avro=True: AvroProducerWrapper (dlq-events-value 스키마)
     - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
     - 부모 클래스 기반 고성능 비동기 처리
     """
+
+    def __init__(self, topic: str = "ws.dlq", use_avro: bool = False) -> None:
+        super().__init__(use_avro=use_avro)
+        self.topic = topic
 
     async def send_dlq_event(self, event: DlqEventDTO, key: KeyType = None) -> None:
         """DTO 기반 DLQ 이벤트 전송.
@@ -285,26 +294,26 @@ class DlqProducer(AvroProducer):
         """
         await self.produce_sending(
             message=event,
-            topic="ws.dlq",
+            topic=self.topic,
             key=key,
         )
 
 
 class BackpressureEventProducer(AvroProducer):
     """
-    통합 백프레셔 이벤트 프로듀서
+    통합 백프레셔 이벤트 프로듀서 (DI 주입)
 
     Producer 큐의 백프레셔 상태를 실시간으로 Kafka에 전송하여
     모니터링 및 알림을 지원합니다.
 
-    - ws.backpressure.events 토픽으로 전송
+    - 토픽은 DI Container에서 주입받음
     - 백프레셔 활성화/비활성화 이벤트 추적
     - 큐 사용률 및 상태 정보 포함
     - use_avro=True: AvroProducerWrapper (backpressure-events-value 스키마)
     - use_avro=False: JsonProducerWrapper (orjson 기반) - 기본값
 
     Example:
-        >>> producer = BackpressureEventProducer()
+        >>> producer = BackpressureEventProducer(topic="ws.backpressure.events")
         >>> await producer.start_producer()
         >>> await producer.send_backpressure_event(
         ...     action="backpressure_activated",
@@ -312,6 +321,10 @@ class BackpressureEventProducer(AvroProducer):
         ...     status=status_dict
         ... )
     """
+
+    def __init__(self, topic: str = "ws.backpressure.events", use_avro: bool = False) -> None:
+        super().__init__(use_avro=use_avro)
+        self.topic = topic
 
     async def send_backpressure_event(
         self,
@@ -346,7 +359,7 @@ class BackpressureEventProducer(AvroProducer):
 
         return await self.produce_sending(
             message=event,
-            topic="ws.backpressure.events",
+            topic=self.topic,
             key=key,
             stop_after_send=False,
         )
@@ -383,15 +396,13 @@ class MetricsProducer(AvroProducer):
         version: int = 1,
         key: KeyType = None,
     ) -> bool:
-        # MinuteItem -> dict 직렬화 (프로토콜 경계에서 수행)
-        # NOTE: dict[str, Any] 사용 사유
-        # - MinuteItem을 프로듀서 경계에서 표준 dict로 직렬화하여 외부 시스템(Kafka/Schema) 호환성
-        items_dicts: list[dict[str, int | dict[str, int]]] = [
-            {
-                "minute_start_ts_kst": it.minute_start_ts_kst,
-                "total": it.total,
-                "details": it.details,
-            }
+        # MinuteItemDomain -> MinuteItemDTO 변환 (타입 안전성 보장)
+        items_dtos: list[MinuteItemDTO] = [
+            MinuteItemDTO(
+                minute_start_ts_kst=it.minute_start_ts_kst,
+                total=it.total,
+                details=it.details,
+            )
             for it in items
         ]
         # Pydantic 모델로 구성하여 I/O 경계에서 스키마를 엄격히 보장
@@ -405,7 +416,7 @@ class MetricsProducer(AvroProducer):
                 range_start_ts_kst=range_start_ts_kst,
                 range_end_ts_kst=range_end_ts_kst,
                 bucket_size_sec=bucket_size_sec,
-                items=items_dicts,
+                items=items_dtos,  # DTO 리스트 전달
                 version=version,
             ),
         )
@@ -471,26 +482,27 @@ class RealtimeDataProducer(AvroProducer):
         if use_avro:
             self.enable_avro("ticker-data-value")
 
-    def _convert_to_avro_format(
+    def _convert_to_dto(
         self, scope: ConnectionScopeDomain, batch: list[dict[str, Any]]
-    ) -> dict[str, Any]:
-        """배치 데이터를 표준 Avro 스키마 형식으로 변환"""
-        return {
-            "exchange": scope.exchange,
-            "region": scope.region,
-            "request_type": scope.request_type,
-            "timestamp_ms": int(time.time() * 1000),  # 표준 스키마 필드명
-            "batch_size": len(batch),
-            "batch_id": None,  # 선택적 필드
-            "data": batch,  # 표준 스키마의 TickerMessage 배열
-        }
+    ) -> RealtimeDataBatchDTO:
+        """배치 데이터를 DTO로 변환 (타입 안전성 보장)"""
+        return RealtimeDataBatchDTO(
+            exchange=scope.exchange,
+            region=scope.region,
+            request_type=scope.request_type,
+            timestamp_ms=int(time.time() * 1000),
+            batch_size=len(batch),
+            batch_id=None,  # 선택적 필드
+            data=batch,  # Ticker/Orderbook/Trade 원본 데이터
+        )
 
     async def send_batch(self, scope: ConnectionScopeDomain, batch: BatchType) -> bool:
-        """타입별 배치 전송 통합 메서드 (Avro 지원)"""
+        """타입별 배치 전송 통합 메서드 (DTO 기반, Avro 지원)"""
         topic = f"{scope.request_type}-data.{scope.region}"
         key = f"{scope.exchange}:{scope.region}:{scope.request_type}"
 
-        message = self._convert_to_avro_format(scope, batch)
+        # DTO로 변환 (타입 안전성 보장)
+        message = self._convert_to_dto(scope, batch)
         return await self.produce_sending(
             message=message,
             topic=topic,

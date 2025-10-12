@@ -5,12 +5,14 @@ from typing import Any
 
 import orjson
 
+from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.config.settings import websocket_settings
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
 from src.core.connection.utils.parse import update_dict
+from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     MessageHandler,
     OrderbookResponseData,
@@ -23,16 +25,35 @@ logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
 
 class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
-    """한국 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """한국 거래소 전용 기반 웹소켓 핸들러
 
-    def __init__(self, exchange_name: str, region: str, request_type: str) -> None:
+    Features:
+    - 배치 수집 시스템 내장 (분 단위 집계)
+    - 심볼별 메트릭 카운팅
+    - Kafka 배치 전송
+    - 재구독 시 배치 시스템 유지
+    - Heartbeat 설정 DI 지원 (YAML에서 주입)
+    """
+
+    def __init__(
+        self,
+        exchange_name: str,
+        region: str,
+        request_type: str,
+        heartbeat_kind: str | None = None,
+        heartbeat_message: str | None = None,
+    ) -> None:
         super().__init__(
             exchange_name=exchange_name,
             region=region,
             request_type=request_type,
         )
+
+        # YAML에서 주입된 heartbeat 설정 적용
+        if heartbeat_kind:
+            self.set_heartbeat(kind=heartbeat_kind, message=heartbeat_message)
         # 한국 거래소 기본 설정
-        self.ping_interval = websocket_settings.HEARTBEAT_INTERVAL
+        self.ping_interval = websocket_settings.heartbeat_interval
         self.projection: list[str] | None = None  # 필드 필터링용
 
         # 배치 수집기 및 프로듀서 (한국 거래소 특화 설정)
@@ -46,7 +67,6 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
     def _parse_message(self, message: str | bytes | dict[str, Any]) -> dict[str, Any]:
         """메시지 파싱 공통 로직 (안전한 JSON 파싱)"""
-        print(message)
         try:
             # 이미 dict인 경우 그대로 반환
             if isinstance(message, dict):
@@ -111,6 +131,19 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             logger.error(
                 f"{self.scope.exchange}: Unexpected parsing error: {e}, message: {message!r}"
             )
+            # 에러 이벤트 발행 (EDA 패턴, 동기 함수이므로 dispatch_error 사용)
+            asyncio.create_task(
+                dispatch_error(
+                    exc=e,
+                    kind="ws",
+                    target=ConnectionTargetDTO(
+                        exchange=self.scope.exchange,
+                        region=self.scope.region,
+                        request_type=self.scope.request_type,
+                    ),
+                    context={"message": str(message)[:100], "observed_key": "parsing"},
+                )
+            )
             return {}
 
     async def _initialize_batch_system(self) -> None:
@@ -150,6 +183,12 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
                 f"{self.scope.exchange}: Failed to initialize batch system: {e}"
             )
             self._batch_enabled = False
+            # 에러 이벤트 발행 (EDA 패턴)
+            await self._error_handler.emit_ws_error(
+                e,
+                observed_key="batch_system_init",
+                raw_context={"batch_enabled": False},
+            )
 
     async def _cleanup_batch_system(self) -> None:
         """배치 수집 시스템 정리"""

@@ -7,7 +7,7 @@ from typing import Any, Literal
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
 
 logger = PipelineLogger.get_logger("health_monitor", "connection")
 

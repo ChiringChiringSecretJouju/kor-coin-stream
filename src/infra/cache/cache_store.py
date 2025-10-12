@@ -30,7 +30,7 @@ from src.core.dto.internal.cache import (
 )
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.cache import ConnectionMetaHashDTO
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     CONNECTION_STATUS_CONNECTED,
     CONNECTION_STATUS_CONNECTING,
@@ -212,7 +212,7 @@ class WebsocketConnectionCache:
         - 심볼 세트 대체 및 동일 TTL 부여
         """
         try:
-            actual_ttl = ttl or redis_settings.DEFAULT_TTL
+            actual_ttl = ttl or redis_settings.default_ttl
             actual_conn_id = connection_id or str(uuid.uuid4())
             now = int(time.time())
 
@@ -249,7 +249,7 @@ class WebsocketConnectionCache:
                     f"업데이트할 연결이 없음: {self.exchange}/{self.region}/{self.request_type}"
                 )
                 return False
-            actual_ttl = ttl or redis_settings.DEFAULT_TTL
+            actual_ttl = ttl or redis_settings.default_ttl
             await self._meta.update_status(status, actual_ttl)
             # 심볼 키도 동일 TTL 유지 (키 빌더 사용)
             await self.redis.expire(
@@ -290,7 +290,7 @@ class WebsocketConnectionCache:
     async def replace_symbols(self, symbols: list[str], ttl: int | None = None) -> None:
         """심볼 세트를 완전히 대체하고 TTL을 재설정합니다."""
         try:
-            actual_ttl = ttl or redis_settings.DEFAULT_TTL
+            actual_ttl = ttl or redis_settings.default_ttl
             await self._symbols.replace(symbols, actual_ttl)
         except Exception as e:
             await self._emit_error(e)

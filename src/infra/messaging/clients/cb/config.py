@@ -26,7 +26,7 @@ def producer_config(**overrides: Any) -> dict:
     # confluent-kafka 형식으로 변환 (점 표기법 사용)
     cfg = {
         # 필수
-        "bootstrap.servers": kafka_settings.BOOTSTRAP_SERVERS,
+        "bootstrap.servers": kafka_settings.bootstrap_servers,
         # 보안(예시: SASL/SCRAM). mTLS면 security.protocol/ssl.*로 교체
         # "security.protocol": "SASL_SSL",
         # "sasl.mechanisms": "SCRAM-SHA-512",
@@ -67,13 +67,13 @@ def consumer_config(**overrides: Any) -> dict:
     # confluent-kafka 형식으로 변환 (지원되는 속성만 포함)
     cfg = {
         # 필수 기본 설정
-        "bootstrap.servers": kafka_settings.BOOTSTRAP_SERVERS,
+        "bootstrap.servers": kafka_settings.bootstrap_servers,
         "security.protocol": "PLAINTEXT",
-        "group.id": kafka_settings.CONSUMER_GROUP_ID,
+        "group.id": kafka_settings.consumer_group_id,
         # 오프셋 관리
         "enable.auto.commit": True,
         "enable.auto.offset.store": False,  # 수동 저장: 처리 성공 시에만 store_offsets 호출
-        "auto.offset.reset": kafka_settings.AUTO_OFFSET_RESET,
+        "auto.offset.reset": kafka_settings.auto_offset_reset,
         "auto.commit.interval.ms": 5000,
         # 세션 관리 (confluent-kafka 지원)
         "session.timeout.ms": 30000,

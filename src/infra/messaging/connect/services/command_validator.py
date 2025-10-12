@@ -17,9 +17,10 @@ from pydantic import BaseModel
 
 from src.common.exceptions.exception_rule import DESERIALIZATION_ERRORS
 from src.common.logger import PipelineLogger
-from src.core.dto.io.dlq_event import DlqEventDTO
-from src.core.dto.io.error_event import WsEventErrorMetaDTO
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import (
+    ConnectionTargetDTO,
+)
+from src.core.dto.io.events import DlqEventDTO, WsEventErrorMetaDTO
 from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, RequestType
 from src.infra.messaging.connect.producer_client import DlqProducer
 

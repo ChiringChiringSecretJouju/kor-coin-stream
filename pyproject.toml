@@ -37,6 +37,7 @@ dependencies = [
     "py-spy>=0.4.1",
     "psutil>=7.1.0",
     "memory-profiler>=0.61.0",
+    "dependency-injector>=4.48.2",
 ]
 
 [tool.setuptools]

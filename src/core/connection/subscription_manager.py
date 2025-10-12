@@ -12,7 +12,7 @@ from src.core.dto.internal.subscription import (
     SubscriptionStateDomain,
     SymbolMergeResultDomain,
 )
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import SocketParams
 
 logger = PipelineLogger.get_logger("subscription_manager", "connection")

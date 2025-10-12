@@ -4,7 +4,7 @@ from typing import Any
 
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.core.dto.internal.common import ConnectionScopeDomain
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
 
 
 class ConnectionErrorHandler:

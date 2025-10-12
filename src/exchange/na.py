@@ -6,12 +6,15 @@ from src.core.types import TickerResponseData
 
 
 class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
-    """코인베이스 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """코인베이스 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Coinbase는 ping/pong 프레임 사용
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
     
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:
@@ -38,12 +41,15 @@ class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
 
 
 class KrakenWebsocketHandler(BaseGlobalWebsocketHandler):
-    """크라켄 거래소 웹소켓 핸들러 (배치 수집 지원)"""
+    """크라켄 거래소 웹소켓 핸들러 (배치 수집 지원)
+    
+    Note:
+        Heartbeat 설정은 YAML (config/settings.yaml)에서 주입됩니다.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Kraken은 ping/pong 프레임 사용
-        self.set_heartbeat(kind="frame")
+        # heartbeat는 DI Container에서 주입됨
     
     @override
     async def websocket_connection(self, url: str, parameter_info: dict) -> None:

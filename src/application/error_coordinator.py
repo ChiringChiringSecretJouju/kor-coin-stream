@@ -10,7 +10,7 @@ from __future__ import annotations
 from src.common.exceptions.error_dispatcher import ErrorDispatcher
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.common import ConnectionScopeDomain
-from src.core.dto.io.target import ConnectionTargetDTO
+from src.core.dto.io.commands import ConnectionTargetDTO
 from src.infra.messaging.connect.producer_client import ErrorEventProducer
 
 logger = PipelineLogger.get_logger("error_coordinator", "app")

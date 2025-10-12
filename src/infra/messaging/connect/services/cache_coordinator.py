@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, cast
 
 from redis.exceptions import RedisError
 
@@ -11,6 +11,9 @@ from src.core.dto.io.commands import CommandDTO
 from src.core.types import (
     CONNECTION_STATUS_CONNECTED,
     CONNECTION_STATUS_CONNECTING,
+    ExchangeName,
+    Region,
+    RequestType,
 )
 from src.infra.cache.cache_store import WebsocketConnectionCache
 
@@ -43,9 +46,9 @@ class CacheCoordinator:
 
         spec = WebsocketConnectionSpecDomain(
             scope=ConnectionScopeDomain(
-                region=region,
-                exchange=exchange_name,
-                request_type=request_type,
+                region=cast(Region, region),
+                exchange=cast(ExchangeName, exchange_name),
+                request_type=cast(RequestType, request_type),
             ),
             symbols=tuple(symbols),
         )

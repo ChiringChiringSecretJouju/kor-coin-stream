@@ -61,9 +61,9 @@ class BaseWebsocketHandler(ABC):
             jitter=0.2,
             heartbeat_kind="frame",
             heartbeat_message=None,
-            heartbeat_timeout=float(websocket_settings.HEARTBEAT_TIMEOUT),
-            heartbeat_fail_limit=websocket_settings.HEARTBEAT_FAIL_LIMIT,
-            receive_idle_timeout=websocket_settings.RECEIVE_IDLE_TIMEOUT,
+            heartbeat_timeout=float(websocket_settings.heartbeat_timeout),
+            heartbeat_fail_limit=websocket_settings.heartbeat_fail_limit,
+            receive_idle_timeout=websocket_settings.receive_idle_timeout,
         )
 
         # 연결 상태 관리
@@ -87,7 +87,7 @@ class BaseWebsocketHandler(ABC):
 
         # 실행 제어 플래그 및 재시도 정책
         self._stop_requested: bool = False
-        self._max_reconnect_attempts: int = websocket_settings.RECONNECT_MAX_ATTEMPTS
+        self._max_reconnect_attempts: int = websocket_settings.reconnect_max_attempts
         self._backoff_task: asyncio.Task[None] | None = None
 
         # emit_factory는 컨텍스트(self.scope, self._metrics_producer)를 캡처한 비동기 함수일것.

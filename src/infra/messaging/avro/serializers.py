@@ -22,7 +22,7 @@ from confluent_kafka.schema_registry.avro import (
 )
 
 from src.common.logger import PipelineLogger
-from src.config.settings import KafkaSettings
+from src.config.settings import kafka_settings
 from src.infra.messaging.avro.utils.serde_utiles import create_value_context
 
 logger = PipelineLogger.get_logger("avro_serializers", "avro")
@@ -32,7 +32,7 @@ async def get_registry_client() -> AsyncSchemaRegistryClient:
     """프로세스 단위 단일 AsyncSchemaRegistryClient 인스턴스 생성/재사용."""
     return AsyncSchemaRegistryClient(
         {
-            "url": KafkaSettings().KAFKA_SCHEMA_REGISTER,
+            "url": kafka_settings.schema_register,
             "cache.capacity": 1000,  # 스키마 캐시 용량
             "cache.latest.ttl.sec": 300,  # 최신 스키마 캐시 TTL (5분)
         }
@@ -80,10 +80,8 @@ class AsyncBaseAvroHandler:
             # 단일 Schema Registry 클라이언트 재사용
             self._confluent_client = await get_registry_client()
             self._initialized = True
-            
-            logger.debug(
-                f"Schema Registry 연결 완료: subject={self.subject}"
-            )
+
+            logger.debug(f"Schema Registry 연결 완료: subject={self.subject}")
 
             return self._confluent_client
 

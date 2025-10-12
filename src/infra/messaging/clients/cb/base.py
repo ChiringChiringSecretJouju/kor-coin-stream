@@ -163,7 +163,8 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
             await self._producer_task
 
         # 남은 메시지 flush (비동기)
-        await asyncio.to_thread(self.producer.flush, 30.0)
+        if self.producer is not None:
+            await asyncio.to_thread(self.producer.flush, 30.0)
 
         # poll 스레드 종료
         self._shutdown_event.set()
@@ -335,12 +336,13 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
                 if message is None:
                     break
 
-                self.producer.produce(
-                    topic=message["topic"],
-                    value=message["value"],
-                    key=message["key"],
-                    callback=self._delivery_callback,
-                )
+                if self.producer is not None:
+                    self.producer.produce(
+                        topic=message["topic"],
+                        value=message["value"],
+                        key=message["key"],
+                        callback=self._delivery_callback,
+                    )
 
                 self._message_queue.task_done()
 
@@ -448,7 +450,8 @@ class AsyncConsumerBase(AsyncBaseClient, ABC):
             self._poll_thread.join(timeout=5.0)
 
         # Consumer 종료
-        await asyncio.to_thread(self.consumer.close)
+        if self.consumer is not None:
+            await asyncio.to_thread(self.consumer.close)
         self.consumer = None
         self._started = False
 
