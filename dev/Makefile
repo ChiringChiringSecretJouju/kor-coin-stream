@@ -15,7 +15,7 @@
 	binance-ticker binance-orderbook binance-trade \
 	huobi-ticker huobi-orderbook huobi-trade mexc-ticker mexc-orderbook mexc-trade \
 	bybit-ticker bybit-orderbook bybit-trade \
-	gateio-ticker gateio-orderbook gateio-trade okx-ticker okx-orderbook okx-trade \
+	okx-ticker okx-orderbook okx-trade \
 	coinbase-ticker coinbase-orderbook coinbase-trade kraken-ticker kraken-orderbook kraken-trade \
 	bitfinex-ticker bitfinex-orderbook bitfinex-trade
 
@@ -115,7 +115,6 @@ asia: ## 아시아 거래소 연결 (6개) - ticker만
 	@$(MAKE) huobi &  # 단일 구독 거래소 - 자동으로 심볼별 연결 분리
 	@$(MAKE) mexc &
 	@$(MAKE) bybit &
-	@$(MAKE) gateio &
 	@$(MAKE) okx &
 	@wait
 
@@ -124,7 +123,6 @@ asia-ticker: ## 아시아 거래소 ticker 연결
 	@$(MAKE) huobi-ticker &
 	@$(MAKE) mexc-ticker &
 	@$(MAKE) bybit-ticker &
-	@$(MAKE) gateio-ticker &
 	@$(MAKE) okx-ticker &
 	@wait
 
@@ -133,7 +131,6 @@ asia-orderbook: ## 아시아 거래소 orderbook 연결
 	@$(MAKE) huobi-orderbook &
 	@$(MAKE) mexc-orderbook &
 	@$(MAKE) bybit-orderbook &
-	@$(MAKE) gateio-orderbook &
 	@$(MAKE) okx-orderbook &
 	@wait
 
@@ -142,7 +139,6 @@ asia-trade: ## 아시아 거래소 trade 연결
 	@$(MAKE) huobi-trade &
 	@$(MAKE) mexc-trade &
 	@$(MAKE) bybit-trade &
-	@$(MAKE) gateio-trade &
 	@$(MAKE) okx-trade &
 	@wait
 
