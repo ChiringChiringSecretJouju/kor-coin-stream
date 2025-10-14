@@ -220,10 +220,7 @@ class ErrorDispatcher:
             self._circuit_breakers[key] = await create_circuit_breaker(key)
         return self._circuit_breakers[key]
 
-    async def record_success(
-        self,
-        target: ConnectionTargetDTO,
-    ) -> None:
+    async def record_success(self, target: ConnectionTargetDTO) -> None:
         """성공 기록 (외부에서 호출용)
 
         사용법:
@@ -246,10 +243,7 @@ class ErrorDispatcher:
             extra={"circuit_breaker_key": key},
         )
 
-    async def is_request_allowed(
-        self,
-        target: ConnectionTargetDTO,
-    ) -> bool:
+    async def is_request_allowed(self, target: ConnectionTargetDTO) -> bool:
         """요청 허용 여부 확인 (외부에서 호출용)
 
         사용법:

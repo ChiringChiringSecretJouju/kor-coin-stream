@@ -11,9 +11,9 @@
 	asia-ticker asia-orderbook asia-trade na-ticker na-orderbook na-trade \
 	eu-ticker eu-orderbook eu-trade upbit-ticker upbit-orderbook upbit-trade \
 	bithumb-ticker bithumb-orderbook bithumb-trade coinone-ticker coinone-orderbook coinone-trade \
-	korbit-ticker korbit-orderbook korbit-trade gopax-ticker gopax-orderbook gopax-trade \
+	korbit-ticker korbit-orderbook korbit-trade \
 	binance-ticker binance-orderbook binance-trade \
-	huobi-ticker huobi-orderbook huobi-trade mexc-ticker mexc-orderbook mexc-trade \
+	huobi-ticker huobi-orderbook huobi-trade \
 	bybit-ticker bybit-orderbook bybit-trade \
 	okx-ticker okx-orderbook okx-trade \
 	coinbase-ticker coinbase-orderbook coinbase-trade kraken-ticker kraken-orderbook kraken-trade \
@@ -75,13 +75,12 @@ all-trade: ## 모든 거래소 trade 연결
 	@$(MAKE) eu-trade &
 	@wait
 
-korea: ## 한국 거래소 연결 (5개) - ticker만
+korea: ## 한국 거래소 연결 (4개) - ticker만
 	@echo "$(GREEN)🇰🇷 한국 거래소 연결 중...$(NC)"
 	@$(MAKE) upbit &
 	@$(MAKE) bithumb &
 	@$(MAKE) coinone &  # 단일 구독 거래소 - 자동으로 심볼별 연결 분리
 	@$(MAKE) korbit &
-	@$(MAKE) gopax &
 	@wait
 
 # 지역별 + 메시지 타입별 연결
@@ -90,7 +89,6 @@ korea-ticker: ## 한국 거래소 ticker 연결
 	@$(MAKE) bithumb-ticker &
 	@$(MAKE) coinone-ticker &
 	@$(MAKE) korbit-ticker &
-	@$(MAKE) gopax-ticker &
 	@wait
 
 korea-orderbook: ## 한국 거래소 orderbook 연결
@@ -98,7 +96,6 @@ korea-orderbook: ## 한국 거래소 orderbook 연결
 	@$(MAKE) bithumb-orderbook &
 	@$(MAKE) coinone-orderbook &
 	@$(MAKE) korbit-orderbook &
-	@$(MAKE) gopax-orderbook &
 	@wait
 
 korea-trade: ## 한국 거래소 trade 연결
@@ -106,14 +103,12 @@ korea-trade: ## 한국 거래소 trade 연결
 	@$(MAKE) bithumb-trade &
 	@$(MAKE) coinone-trade &
 	@$(MAKE) korbit-trade &
-	@$(MAKE) gopax-trade &
 	@wait
 
-asia: ## 아시아 거래소 연결 (6개) - ticker만
+asia: ## 아시아 거래소 연결 (4개) - ticker만
 	@echo "$(GREEN)🌏 아시아 거래소 연결 중...$(NC)"
 	@$(MAKE) binance &
 	@$(MAKE) huobi &  # 단일 구독 거래소 - 자동으로 심볼별 연결 분리
-	@$(MAKE) mexc &
 	@$(MAKE) bybit &
 	@$(MAKE) okx &
 	@wait
@@ -121,7 +116,6 @@ asia: ## 아시아 거래소 연결 (6개) - ticker만
 asia-ticker: ## 아시아 거래소 ticker 연결
 	@$(MAKE) binance-ticker &
 	@$(MAKE) huobi-ticker &
-	@$(MAKE) mexc-ticker &
 	@$(MAKE) bybit-ticker &
 	@$(MAKE) okx-ticker &
 	@wait
@@ -129,7 +123,6 @@ asia-ticker: ## 아시아 거래소 ticker 연결
 asia-orderbook: ## 아시아 거래소 orderbook 연결
 	@$(MAKE) binance-orderbook &
 	@$(MAKE) huobi-orderbook &
-	@$(MAKE) mexc-orderbook &
 	@$(MAKE) bybit-orderbook &
 	@$(MAKE) okx-orderbook &
 	@wait
@@ -137,7 +130,6 @@ asia-orderbook: ## 아시아 거래소 orderbook 연결
 asia-trade: ## 아시아 거래소 trade 연결
 	@$(MAKE) binance-trade &
 	@$(MAKE) huobi-trade &
-	@$(MAKE) mexc-trade &
 	@$(MAKE) bybit-trade &
 	@$(MAKE) okx-trade &
 	@wait
@@ -321,41 +313,41 @@ korbit-trade: ## Korbit trade 연결
 		--request-type trade \
 		--subscribe-type trade
 
-gopax: ## Gopax 연결 (ticker)
-	@echo "$(YELLOW)📈 Gopax 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange gopax \
-		--symbols $(SYMBOLS) \
-		--region korea \
-		--request-type $(REQUEST_TYPE) \
-		--subscribe-type $(SUBSCRIBE_TYPE)
+# gopax: ## Gopax 연결 (ticker) - 제거됨
+# 	@echo "$(YELLOW)📈 Gopax 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange gopax \
+# 		--symbols $(SYMBOLS) \
+# 		--region korea \
+# 		--request-type $(REQUEST_TYPE) \
+# 		--subscribe-type $(SUBSCRIBE_TYPE)
 
-gopax-ticker: ## Gopax ticker 연결
-	@echo "$(YELLOW)📊 Gopax ticker 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange gopax \
-		--symbols $(SYMBOLS) \
-		--region korea \
-		--request-type ticker \
-		--subscribe-type ticker
+# gopax-ticker: ## Gopax ticker 연결 - 제거됨
+# 	@echo "$(YELLOW)📊 Gopax ticker 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange gopax \
+# 		--symbols $(SYMBOLS) \
+# 		--region korea \
+# 		--request-type ticker \
+# 		--subscribe-type ticker
 
-gopax-orderbook: ## Gopax orderbook 연결
-	@echo "$(YELLOW)📈 Gopax orderbook 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange gopax \
-		--symbols $(SYMBOLS) \
-		--region korea \
-		--request-type orderbook \
-		--subscribe-type orderbook
+# gopax-orderbook: ## Gopax orderbook 연결 - 제거됨
+# 	@echo "$(YELLOW)📈 Gopax orderbook 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange gopax \
+# 		--symbols $(SYMBOLS) \
+# 		--region korea \
+# 		--request-type orderbook \
+# 		--subscribe-type orderbook
 
-gopax-trade: ## Gopax trade 연결
-	@echo "$(YELLOW)💰 Gopax trade 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange gopax \
-		--symbols $(SYMBOLS) \
-		--region korea \
-		--request-type trade \
-		--subscribe-type trade
+# gopax-trade: ## Gopax trade 연결 - 제거됨
+# 	@echo "$(YELLOW)💰 Gopax trade 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange gopax \
+# 		--symbols $(SYMBOLS) \
+# 		--region korea \
+# 		--request-type trade \
+# 		--subscribe-type trade
 
 # 아시아 거래소들
 binance: ## Binance 연결 (ticker)
@@ -430,41 +422,41 @@ huobi-trade: ## Huobi trade 연결
 		--request-type trade \
 		--subscribe-type trade
 
-mexc: ## MEXC 연결 (ticker)
-	@echo "$(YELLOW)📈 MEXC 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange mexc \
-		--symbols $(SYMBOLS) \
-		--region asia \
-		--request-type $(REQUEST_TYPE) \
-		--subscribe-type $(SUBSCRIBE_TYPE)
+# mexc: ## MEXC 연결 (ticker) - 제거됨
+# 	@echo "$(YELLOW)📈 MEXC 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange mexc \
+# 		--symbols $(SYMBOLS) \
+# 		--region asia \
+# 		--request-type $(REQUEST_TYPE) \
+# 		--subscribe-type $(SUBSCRIBE_TYPE)
 
-mexc-ticker: ## MEXC ticker 연결
-	@echo "$(YELLOW)📊 MEXC ticker 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange mexc \
-		--symbols $(SYMBOLS) \
-		--region asia \
-		--request-type ticker \
-		--subscribe-type ticker
+# mexc-ticker: ## MEXC ticker 연결 - 제거됨
+# 	@echo "$(YELLOW)📊 MEXC ticker 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange mexc \
+# 		--symbols $(SYMBOLS) \
+# 		--region asia \
+# 		--request-type ticker \
+# 		--subscribe-type ticker
 
-mexc-orderbook: ## MEXC orderbook 연결
-	@echo "$(YELLOW)📈 MEXC orderbook 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange mexc \
-		--symbols $(SYMBOLS) \
-		--region asia \
-		--request-type orderbook \
-		--subscribe-type orderbook
+# mexc-orderbook: ## MEXC orderbook 연결 - 제거됨
+# 	@echo "$(YELLOW)📈 MEXC orderbook 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange mexc \
+# 		--symbols $(SYMBOLS) \
+# 		--region asia \
+# 		--request-type orderbook \
+# 		--subscribe-type orderbook
 
-mexc-trade: ## MEXC trade 연결
-	@echo "$(YELLOW)💰 MEXC trade 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange mexc \
-		--symbols $(SYMBOLS) \
-		--region asia \
-		--request-type trade \
-		--subscribe-type trade
+# mexc-trade: ## MEXC trade 연결 - 제거됨
+# 	@echo "$(YELLOW)💰 MEXC trade 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange mexc \
+# 		--symbols $(SYMBOLS) \
+# 		--region asia \
+# 		--request-type trade \
+# 		--subscribe-type trade
 
 bybit: ## Bybit 연결 (ticker)
 	@echo "$(YELLOW)📈 Bybit 연결 중...$(NC)"

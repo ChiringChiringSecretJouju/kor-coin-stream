@@ -415,6 +415,9 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             symbol = self._extract_symbol(parsed_message)
             self._minute_batch_counter.inc(symbol=symbol)
 
+            # 실제 메시지에서 심볼 추출 성공 시 ACK 발행 시도 (최초 1회)
+            await self._try_emit_ack_from_message(symbol)
+
             # 메시지 타입별 핸들러 호출
             handler_map: MessageHandler = {
                 "ticker": self.ticker_message,

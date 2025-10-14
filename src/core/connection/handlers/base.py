@@ -13,6 +13,7 @@ from src.common.metrics import MinuteBatchCounter
 from src.config.settings import websocket_settings
 from src.core.connection.emitters.connect_success_ack_emitter import (
     ConnectSuccessAckEmitter,
+    _normalize_coin_symbol,
 )
 from src.core.connection.error_handler import ConnectionErrorHandler
 from src.core.connection.health_monitor import ConnectionHealthMonitor
@@ -73,17 +74,19 @@ class BaseWebsocketHandler(ABC):
         self._subscription_manager = SubscriptionManager(self.scope)
         self._health_monitor = ConnectionHealthMonitor(self.scope, self.policy)
         self._error_handler = ConnectionErrorHandler(self.scope)
-        
+
         # 롱-리빙 메트릭 프로듀서
         self._metrics_producer = MetricsProducer()
-        
+
         # 백프레셔 모니터링 Producer
         self._backpressure_producer = BackpressureEventProducer()
-        
+
         # 연결 성공 ACK 방출기
         self._ack_emitter = ConnectSuccessAckEmitter(self.scope)
         # 중복 ACK 방지 플래그 (연결당 1회만 발행)
         self._ack_sent: bool = False
+        # 실제 메시지에서 추출된 심볼 캐시 (최초 1회 추출용)
+        self._cached_symbols: set[str] = set()
 
         # 실행 제어 플래그 및 재시도 정책
         self._stop_requested: bool = False
@@ -232,6 +235,8 @@ class BaseWebsocketHandler(ABC):
                     attempt = 0  # 성공적으로 연결되었으므로 백오프 시도횟수 리셋
                     self._stop_requested = False
                     self._ack_sent = False
+                    # 재연결 시 캐시 초기화
+                    self._cached_symbols.clear()
 
                     # Producer 시작 및 백프레셔 모니터링 연결
                     await self._backpressure_producer.start_producer()
@@ -388,39 +393,84 @@ class BaseWebsocketHandler(ABC):
         self._log_status("stopped")
         self._stop_requested = True
 
-    async def _emit_connect_success_ack(self) -> None:
-        """연결 성공(구독 확정) 시 심볼별 ACK 이벤트를 1회 발행합니다."""
-        logger.debug(
-            f"{self.scope.exchange}: _emit_connect_success_ack called, _ack_sent={self._ack_sent}"
+    async def _try_emit_ack_from_message(self, symbol: str | None) -> None:
+        """메시지에서 추출된 심볼로 ACK 발행 시도 (심볼별 1회만).
+        
+        Args:
+            symbol: 추출된 심볼 ("BTC_COUNT" 형식)
+        """
+        if not symbol or not symbol.endswith("_COUNT"):
+            return
+        
+        # "BTC_COUNT" → "BTC" 변환
+        coin = symbol[:-6]
+        
+        # 이미 ACK 발행한 심볼이면 스킵
+        if coin in self._cached_symbols:
+            return
+        
+        # 새로운 심볼 발견 → 캐시에 추가 및 즉시 ACK 발행
+        self._cached_symbols.add(coin)
+        logger.info(
+            f"{self.scope.exchange}: New symbol extracted: {coin}, sending ACK immediately"
         )
+        await self._emit_single_symbol_ack(coin)
 
-        if self._ack_sent:
-            logger.debug(f"{self.scope.exchange}: ACK already sent, skipping")
-            return
-
-        # 심볼이 아직 상태에 세팅되지 않았어도, current_params에서 추출하여 사용 (타이밍 이슈 방지)
+    async def _emit_single_symbol_ack(self, coin: str) -> None:
+        """단일 심볼에 대한 ACK 이벤트 발행.
+        
+        Args:
+            coin: 정규화된 심볼 ("BTC" 형식)
+        """
         try:
-            symbols = self._subscription_manager.effective_symbols()
-        except Exception:
-            # 이전 버전 호환 또는 예상치 못한 예외 시 폴백
-            symbols = self._subscription_manager.current_symbols or []
-        logger.debug(f"{self.scope.exchange}: symbols_for_ack={symbols}")
-
-        if not symbols:
-            # 심볼을 확인할 수 없는 경우(리스트 기반 등)는 스킵
-            logger.warning(
-                f"{self.scope.exchange}: No symbols available for ACK, skipping"
-            )
-            return
-
-        try:
-            logger.info(
-                f"{self.scope.exchange}: Sending connect success ACK for symbols: {symbols}"
-            )
-            await self._ack_emitter.emit_for_symbols(symbols)
-            self._ack_sent = True
-            logger.info(f"{self.scope.exchange}: Connect success ACK sent successfully")
+            await self._ack_emitter.emit_for_symbols([coin])
+            logger.info(f"{self.scope.exchange}: ACK sent for symbol: {coin}")
         except Exception as ack_e:
             logger.warning(
-                f"{self.scope.exchange}: connect-success ACK 전송 실패 - {ack_e}"
+                f"{self.scope.exchange}: ACK 전송 실패 (symbol={coin}) - {ack_e}"
             )
+
+    async def _emit_connect_success_ack(self) -> None:
+        """연결 성공(구독 확정) 시 심볼별 ACK 이벤트를 발행합니다.
+        
+        구독 확인 메시지(SUBSCRIBED 등)에서 호출되며, socket_parameters에서 심볼 추출을 시도합니다.
+        추출 실패 시 실제 데이터 메시지에서 점진적으로 추출합니다.
+        """
+        if self._ack_sent:
+            logger.debug(f"{self.scope.exchange}: ACK process already initiated, skipping")
+            return
+
+        # socket_parameters에서 심볼 추출 시도
+        try:
+            symbols = self._subscription_manager.effective_symbols()
+            logger.info(
+                f"{self.scope.exchange}: Extracted symbols from socket_parameters: {symbols}"
+            )
+        except Exception:
+            symbols = self._subscription_manager.current_symbols or []
+        
+        if not symbols:
+            # 추출 실패 → 실제 데이터 메시지에서 점진적으로 추출
+            logger.info(
+                f"{self.scope.exchange}: No symbols from socket_parameters, "
+                "will extract from data messages"
+            )
+            self._ack_sent = True  # 재시도 방지
+            return
+
+        # 추출 성공 → 각 심볼에 대해 ACK 발행
+        logger.info(
+            f"{self.scope.exchange}: Sending ACK for {len(symbols)} symbols "
+            "from socket_parameters"
+        )
+        for sym in symbols:
+            # 정규화 ("KRW-BTC" → "BTC" 등)
+            coin = _normalize_coin_symbol(sym)
+            
+            # 중복 방지
+            if coin not in self._cached_symbols:
+                self._cached_symbols.add(coin)
+                await self._emit_single_symbol_ack(coin)
+        
+        self._ack_sent = True
+        logger.info(f"{self.scope.exchange}: ACK process completed")
