@@ -8,6 +8,7 @@ from src.core.types._common_types import (
     Region,
     RequestType,
     SocketParams,
+    TradeSide,
     connection_status_format,
 )
 from src.core.types._exception_types import (
@@ -24,9 +25,12 @@ from src.core.types._payload_type import (
     AsyncTradeType,
     CountingItem,
     MessageHandler,
+    OrderbookItem,
     OrderbookResponseData,
     PayloadAction,
     PayloadType,
+    StandardOrderbook,
+    StandardTrade,
     TickerResponseData,
     TradeResponseData,
 )
@@ -39,6 +43,7 @@ __all__ = [
     "ExchangeName",
     "SocketParams",
     "ConnectionStatus",
+    "TradeSide",
     "CONNECTION_STATUS_CONNECTED",
     "CONNECTION_STATUS_CONNECTING",
     "CONNECTION_STATUS_DISCONNECTED",
@@ -53,6 +58,9 @@ __all__ = [
     # _payload_type
     "PayloadType",
     "PayloadAction",
+    "OrderbookItem",
+    "StandardOrderbook",
+    "StandardTrade",
     "OrderbookResponseData",
     "TradeResponseData",
     "TickerResponseData",

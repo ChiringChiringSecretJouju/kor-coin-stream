@@ -1,14 +1,16 @@
 """이벤트 DTO 통합 모듈
 
 에러, DLQ, 백프레셔 등 모든 이벤트 DTO를 포함합니다.
+재사용 패턴: TimestampedModel 활용으로 코드 중복 제거
 """
 
-from datetime import datetime, timezone
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import Field
 
-from src.core.dto.io._base import BaseIOModelDTO
+from src.core.dto.io._base import BaseIOModelDTO, TimestampedModel
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import ErrorCode, ErrorDomain
 
@@ -38,20 +40,20 @@ class WsEventErrorMetaDTO(BaseIOModelDTO):
     raw_context: dict | None = None
 
 
-class WsErrorEventDTO(BaseIOModelDTO):
-    """웹소켓 에러 이벤트 DTO (I/O 경계용 Pydantic v2 모델).
+class WsErrorEventDTO(TimestampedModel):
+    """웹소켓 에러 이벤트 DTO - 최적화됨 (TimestampedModel 재사용).
 
-    - action은 "error"로 고정합니다.
-    - unknown/extra 필드는 금지합니다.
+    특징:
+    - action은 "error"로 고정
+    - timestamp_utc 자동 생성 (TimestampedModel)
+    - 불변 객체 (frozen=True)
+    - extra 필드 금지
     """
 
-    action: Literal["error"]
-    error_timestamp_utc: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-    target: ConnectionTargetDTO
-    meta: WsEventErrorMetaDTO
-    error: WsEventErrorTypeDTO
+    action: Literal["error"] = Field(default="error", description="액션 타입 (고정)")
+    target: ConnectionTargetDTO = Field(..., description="에러 대상")
+    meta: WsEventErrorMetaDTO = Field(..., description="에러 메타데이터")
+    error: WsEventErrorTypeDTO = Field(..., description="에러 상세")
 
 
 # ========================================
@@ -59,21 +61,21 @@ class WsErrorEventDTO(BaseIOModelDTO):
 # ========================================
 
 
-class DlqEventDTO(BaseIOModelDTO):
-    """DLQ 이벤트 DTO (I/O 경계용 Pydantic v2 모델).
+class DlqEventDTO(TimestampedModel):
+    """DLQ 이벤트 DTO - 최적화됨 (TimestampedModel 재사용).
 
-    - action은 "dlq"로 고정합니다.
-    - unknown/extra 필드는 금지합니다.
+    특징:
+    - action은 "dlq"로 고정
+    - timestamp_utc 자동 생성 (TimestampedModel)
+    - 불변 객체 (frozen=True)
+    - 처리 실패 메시지 복구를 위한 안전망
     """
 
-    action: Literal["dlq"]
-    reason: str
-    error_timestamp_utc: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-    target: ConnectionTargetDTO | None = None
-    meta: WsEventErrorMetaDTO
-    detail_error: dict[str, str]
+    action: Literal["dlq"] = Field(default="dlq", description="액션 타입 (고정)")
+    reason: str = Field(..., description="DLQ 전송 사유")
+    target: ConnectionTargetDTO | None = Field(None, description="대상 정보 (선택)")
+    meta: WsEventErrorMetaDTO = Field(..., description="메타데이터")
+    detail_error: dict[str, str] = Field(..., description="상세 에러 정보")
 
 
 # ========================================
@@ -95,11 +97,15 @@ class BackpressureStatusDTO(BaseIOModelDTO):
     low_watermark: int = Field(..., description="Low Watermark (throttle 해제)")
 
 
-class BackpressureEventDTO(BaseIOModelDTO):
-    """백프레셔 이벤트 DTO (I/O 경계용 Pydantic v2 모델)
+class BackpressureEventDTO(TimestampedModel):
+    """백프레셔 이벤트 DTO - 최적화됨 (TimestampedModel 재사용).
 
-    Producer 큐에서 백프레셔가 발생했을 때 Kafka로 전송되는 이벤트입니다.
+    Producer 큐 백프레셔 발생 시 Kafka로 전송되는 이벤트입니다.
     실시간 모니터링 및 알림에 사용됩니다.
+
+    특징:
+    - timestamp_utc 자동 생성 (TimestampedModel)
+    - 불변 객체 (frozen=True)
 
     Example:
         >>> event = BackpressureEventDTO(
@@ -112,11 +118,9 @@ class BackpressureEventDTO(BaseIOModelDTO):
     action: Literal[
         "backpressure_activated", "backpressure_deactivated", "queue_status_report"
     ] = Field(..., description="백프레셔 상태 (활성화/비활성화/주기적 리포트)")
-    event_timestamp_utc: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
-        description="이벤트 발생 시각 (UTC)",
-    )
     producer_name: str = Field(..., description="Producer 이름 (클래스명)")
-    producer_type: str = Field(default="AsyncProducerBase", description="Producer 타입")
+    producer_type: str = Field(
+        default="AsyncProducerBase", description="Producer 타입"
+    )
     status: BackpressureStatusDTO = Field(..., description="백프레셔 상태 정보")
     message: str | None = Field(None, description="추가 메시지")

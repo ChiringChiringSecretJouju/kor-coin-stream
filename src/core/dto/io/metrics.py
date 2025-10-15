@@ -1,12 +1,14 @@
 """메트릭 DTO 통합 모듈
 
 카운팅, 분 단위 아이템, Producer 메트릭 등 모든 메트릭 DTO를 포함합니다.
+재사용 패턴: MarketContextModel 활용으로 코드 중복 제거
 """
+
+from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from src.core.dto.io._base import BaseIOModelDTO
-from src.core.types import ExchangeName, Region, RequestType
+from src.core.dto.io._base import OPTIMIZED_CONFIG, BaseIOModelDTO, MarketContextModel
 
 # ========================================
 # 분 단위 메트릭 아이템 (Minute Item)
@@ -14,7 +16,7 @@ from src.core.types import ExchangeName, Region, RequestType
 
 
 class MinuteItemDTO(BaseModel):
-    """단일 분 집계 항목 DTO (I/O 경계용 Pydantic v2 모델).
+    """단일 분 집계 항목 DTO - 최적화됨 (불변).
 
     카운팅/메트릭 전송 시 사용되는 DTO입니다.
 
@@ -24,9 +26,13 @@ class MinuteItemDTO(BaseModel):
         details: 심볼별 카운트 (예: {"BTCUSDT_COUNT": 7, "ETHUSDT_COUNT": 3})
     """
 
-    minute_start_ts_kst: int
-    total: int
-    details: dict[str, int]
+    minute_start_ts_kst: int = Field(
+        ..., description="분 시작 타임스탬프 (KST Unix timestamp)", gt=0
+    )
+    total: int = Field(..., description="총 메시지 수", ge=0)
+    details: dict[str, int] = Field(..., description="심볼별 카운트")
+
+    model_config = OPTIMIZED_CONFIG
 
 
 # ========================================
@@ -50,18 +56,16 @@ class CountingBatchDTO(BaseIOModelDTO):
     version: int
 
 
-class MarketCountingDTO(BaseIOModelDTO):
-    """마켓 소켓 카운팅 메시지 페이로드 (Pydantic v2 모델).
+class MarketCountingDTO(MarketContextModel):
+    """마켓 소켓 카운팅 메시지 - 최적화됨 (MarketContextModel 재사용).
 
-    - region/exchange/request_type 메타와 배치 본문을 포함합니다.
-    - unknown/extra 필드는 금지합니다.
+    특징:
+    - region/exchange/request_type는 MarketContextModel에서 자동 제공
+    - 불변 객체 (frozen=True)
+    - unknown/extra 필드 금지
     """
 
-    ticket_id: str  # UUID
-    region: Region
-    exchange: ExchangeName
-    request_type: RequestType
-    batch: CountingBatchDTO
+    batch: CountingBatchDTO = Field(..., description="카운팅 배치 데이터")
 
 
 # ========================================

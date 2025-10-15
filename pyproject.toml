@@ -38,6 +38,7 @@ dependencies = [
     "psutil>=7.1.0",
     "memory-profiler>=0.61.0",
     "dependency-injector>=4.48.2",
+    "uvloop>=0.21.0",
 ]
 
 [tool.setuptools]

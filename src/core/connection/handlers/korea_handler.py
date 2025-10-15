@@ -11,7 +11,7 @@ from src.config.settings import websocket_settings
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
-from src.core.connection.utils.parse import update_dict
+from src.core.connection.utils.parse import preprocess_trade_message, update_dict
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     MessageHandler,
@@ -280,37 +280,54 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
     async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
         """오더북 메시지 처리 함수 (한국 거래소 배치 수집 지원)"""
-        parsed_message = self._parse_message(message)
-
-        # 빈 메시지나 파싱 실패 시 무시
-        if not parsed_message:
-            return None
-
-        # 구독 확인 메시지 처리 (일부 거래소에서 사용)
-        rt = parsed_message.get("response_type", "")
-        logger.debug(f"{self.scope.exchange}: response_type={rt}")
-
-        if rt == "SUBSCRIBED":
-            self._log_status("subscribed")
-            logger.info(f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)")
-            # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-            await self._emit_connect_success_ack()
-            return None
-        if rt == "CONNECTED":
-            logger.debug(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
-            return None
-
-        # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
-        data_sub: dict | None = parsed_message.get("data", None)
-        if isinstance(data_sub, dict):
-            parsed_message = update_dict(parsed_message, "data")
-
-        # projection이 지정되면 해당 필드만 추출
-        fields: list[str] | None = self.projection
-        if fields:
-            filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
+        # 자식 클래스에서 전처리된 메시지인지 확인
+        if isinstance(message, dict) and message.get("_preprocessed", False):
+            # 이미 전처리된 메시지 - 플래그만 제거하고 바로 배치 처리
+            filtered_message = message.copy()
+            filtered_message.pop("_preprocessed", None)
         else:
-            filtered_message = parsed_message
+            # 기본 처리 (자식 클래스에서 오버라이드하지 않은 경우)
+            parsed_message = (
+                self._parse_message(message)
+                if not isinstance(message, dict)
+                else message
+            )
+
+            # 빈 메시지나 파싱 실패 시 무시
+            if not parsed_message:
+                return None
+
+            # 구독 확인 메시지 처리 (일부 거래소에서 사용)
+            rt = parsed_message.get("response_type", "")
+            logger.debug(f"{self.scope.exchange}: response_type={rt}")
+
+            if rt == "SUBSCRIBED":
+                self._log_status("subscribed")
+                logger.info(
+                    f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
+                )
+                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
+                await self._emit_connect_success_ack()
+                return None
+            if rt == "CONNECTED":
+                logger.debug(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
+                return None
+
+            # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
+            data_sub: dict | None = parsed_message.get("data", None)
+            if isinstance(data_sub, dict):
+                parsed_message = update_dict(parsed_message, "data")
+
+            # projection이 지정되면 해당 필드만 추출
+            fields: list[str] | None = self.projection
+            if fields:
+                filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
+            else:
+                filtered_message = parsed_message
+
+            logger.info(
+                f"{self.scope.exchange}: Using default processing (no child preprocessing)"
+            )
 
         # 배치 수집기에 메시지 추가 (한국 거래소 특화)
         if self._batch_enabled and self._batch_collector:
@@ -330,37 +347,51 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
     async def trade_message(self, message: Any) -> TradeResponseData | None:
         """체결 메시지 처리 함수 (한국 거래소 배치 수집 지원)"""
-        parsed_message = self._parse_message(message)
-
-        # 빈 메시지나 파싱 실패 시 무시
-        if not parsed_message:
-            return None
-
-        # 구독 확인 메시지 처리 (일부 거래소에서 사용)
-        rt = parsed_message.get("response_type", "")
-        logger.debug(f"{self.scope.exchange}: response_type={rt}")
-
-        if rt == "SUBSCRIBED":
-            self._log_status("subscribed")
-            logger.info(f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)")
-            # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-            await self._emit_connect_success_ack()
-            return None
-        if rt == "CONNECTED":
-            logger.debug(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
-            return None
-
-        # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
-        data_sub: dict | None = parsed_message.get("data", None)
-        if isinstance(data_sub, dict):
-            parsed_message = update_dict(parsed_message, "data")
-
-        # projection이 지정되면 해당 필드만 추출
-        fields: list[str] | None = self.projection
-        if fields:
-            filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
+        # 자식 클래스에서 전처리된 메시지인지 확인
+        if isinstance(message, dict) and message.get("_preprocessed", False):
+            # 이미 전처리된 메시지 - 플래그만 제거하고 바로 배치 처리
+            filtered_message = message.copy()
+            filtered_message.pop("_preprocessed", None)
         else:
-            filtered_message = parsed_message
+            # 기본 처리 (자식 클래스에서 오버라이드하지 않은 경우)
+            parsed_message = (
+                self._parse_message(message)
+                if not isinstance(message, dict)
+                else message
+            )
+
+            # 빈 메시지나 파싱 실패 시 무시
+            if not parsed_message:
+                return None
+
+            # 구독 확인 메시지 처리 (일부 거래소에서 사용)
+            rt = parsed_message.get("response_type", "")
+            logger.debug(f"{self.scope.exchange}: response_type={rt}")
+
+            if rt == "SUBSCRIBED":
+                self._log_status("subscribed")
+                logger.info(
+                    f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
+                )
+                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
+                await self._emit_connect_success_ack()
+                return None
+            if rt == "CONNECTED":
+                logger.debug(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
+                return None
+
+            # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
+            data_sub: dict | None = parsed_message.get("data", None)
+            if isinstance(data_sub, dict):
+                parsed_message = update_dict(parsed_message, "data")
+
+            # 전처리 함수 적용 (거래소별 구조 → 표준 스키마 변환)
+            trade_dto = preprocess_trade_message(
+                parsed_message, projection=self.projection
+            )
+
+            # Pydantic DTO → dict 변환 (배치 수집기는 dict 기대)
+            filtered_message = trade_dto.model_dump()
 
         # 배치 수집기에 메시지 추가 (한국 거래소 특화)
         if self._batch_enabled and self._batch_collector:

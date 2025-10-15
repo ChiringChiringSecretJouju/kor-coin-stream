@@ -41,6 +41,16 @@ class ConnectionStatus(Enum):
     DISCONNECTED = "disconnected"
 
 
+class TradeSide(Enum):
+    """체결 매수/매도 구분 Enum.
+    
+    표준화된 체결 방향을 나타냅니다.
+    """
+
+    BUY = "BUY"  # 매수 체결
+    SELL = "SELL"  # 매도 체결
+
+
 CONNECTION_STATUS_CONNECTED: Final[ConnectionStatus] = ConnectionStatus.CONNECTED
 CONNECTION_STATUS_CONNECTING: Final[ConnectionStatus] = ConnectionStatus.CONNECTING
 CONNECTION_STATUS_DISCONNECTED: Final[ConnectionStatus] = ConnectionStatus.DISCONNECTED

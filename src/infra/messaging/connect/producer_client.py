@@ -11,7 +11,7 @@ from src.common.logger import PipelineLogger
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.metrics import MinuteItemDomain
 from src.core.dto.io.commands import ConnectRequestDTO, ConnectSuccessEventDTO
-from src.core.dto.io.data import RealtimeDataBatchDTO
+from src.core.dto.io.realtime import RealtimeDataBatchDTO
 from src.core.dto.io.events import (
     BackpressureEventDTO,
     BackpressureStatusDTO,
@@ -480,7 +480,7 @@ class RealtimeDataProducer(AvroProducer):
     - 스키마 진화 자동 처리
     """
 
-    def __init__(self, use_avro: bool = True) -> None:
+    def __init__(self, use_avro: bool = False) -> None:
         super().__init__(use_avro=use_avro)
         # Avro 사용 시 기본적으로 ticker 데이터 스키마 설정
         if use_avro:

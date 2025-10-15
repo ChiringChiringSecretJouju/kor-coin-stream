@@ -1,21 +1,29 @@
-from __future__ import annotations
+"""거래소 메시지 전처리 유틸리티.
+
+새로운 파서 시스템(Strategy Pattern)을 사용하여 거래소별 메시지를 표준 포맷으로 변환합니다.
+기존 API와의 하위 호환성을 유지합니다.
+"""
 
 from typing import Any
 
+from src.core.connection.utils.dict_utils import update_dict
+from src.core.connection.utils.orderbooks.korea import get_korea_orderbook_dispatcher
+from src.core.connection.utils.timestamp import (
+    get_regional_datetime,
+    get_regional_timestamp_ms,
+)
+from src.core.connection.utils.trades.korea import get_korea_trade_dispatcher
+from src.core.dto.io.realtime import StandardOrderbookDTO, StandardTradeDTO
 
-def update_dict(message: dict[str, Any], key: str) -> dict[str, Any]:
-    """message[key]가 dict 또는 list[dict]인 경우 해당 내용을 message에 병합하여 반환.
-
-    - 공용 파싱 유틸로 승격된 함수입니다.
-    - 입력은 변경하지 않고 복사본을 기반으로 처리합니다.
-    """
-    merged = dict(message)
-    data_sub = message.get(key)
-    if isinstance(data_sub, dict):
-        merged.update(data_sub)
-    elif isinstance(data_sub, list) and data_sub and isinstance(data_sub[0], dict):
-        merged.update(data_sub[0])
-    return merged
+# Re-export for backward compatibility
+__all__ = [
+    "get_regional_timestamp_ms",
+    "get_regional_datetime",
+    "update_dict",
+    "preprocess_ticker_message",
+    "preprocess_orderbook_message",
+    "preprocess_trade_message",
+]
 
 
 def preprocess_ticker_message(
@@ -98,3 +106,58 @@ def preprocess_ticker_message(
 
     standardized_message["_preprocessed"] = True
     return standardized_message
+
+
+def preprocess_orderbook_message(
+    parsed_message: dict[str, Any], projection: list[str] | None
+) -> StandardOrderbookDTO:
+    """Orderbook 메시지 전처리 (새로운 파서 시스템 사용).
+
+    표준 포맷:
+        StandardOrderbookDTO {
+            symbol: str,              # 심볼 (BTC, ETH 등)
+            quote_currency: str,      # 기준 통화 (KRW, USDT 등)
+            timestamp: int,           # 현재 시각 (ms)
+            asks: [OrderbookItemDTO, ...],
+            bids: [OrderbookItemDTO, ...]
+        }
+
+    Args:
+        parsed_message: 원본 메시지
+        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
+
+    Returns:
+        표준화된 orderbook (Pydantic DTO)
+    """
+    # 디스패처로 자동 파싱
+    dispatcher = get_korea_orderbook_dispatcher()
+    return dispatcher.parse(parsed_message)
+
+
+def preprocess_trade_message(
+    parsed_message: dict[str, Any], projection: list[str] | None
+) -> StandardTradeDTO:
+    """Trade 메시지 전처리 (새로운 파서 시스템 사용).
+
+    모든 한국 거래소의 Trade 데이터를 Upbit 표준 포맷(Pydantic DTO)으로 통일합니다.
+
+    표준 포맷:
+        StandardTradeDTO {
+            code: str,               # 마켓 코드 ("KRW-BTC" 형식)
+            trade_timestamp: int,    # 체결 타임스탬프 (milliseconds)
+            trade_price: float,      # 체결 가격
+            trade_volume: float,     # 체결량
+            ask_bid: "ASK" | "BID",  # 매수/매도 구분
+            sequential_id: str       # 체결 고유 ID
+        }
+
+    Args:
+        parsed_message: 원본 메시지
+        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
+
+    Returns:
+        표준화된 trade (Pydantic DTO, Upbit 형식)
+    """
+    # 디스패처로 자동 파싱
+    dispatcher = get_korea_trade_dispatcher()
+    return dispatcher.parse(parsed_message)

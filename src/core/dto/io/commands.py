@@ -6,12 +6,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, StringConstraints
+from pydantic import BaseModel, Field, StrictStr, StringConstraints
 
-from src.core.dto.io._base import BaseIOModelDTO
+from src.core.dto.io._base import OPTIMIZED_CONFIG, BaseIOModelDTO, TimestampedModel
 from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, RequestType, SocketParams
 
 # ========================================
@@ -20,13 +19,19 @@ from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, Request
 
 
 class ConnectionTargetDTO(BaseModel):
-    """이벤트 대상(Target) Pydantic v2 모델."""
+    """이벤트 대상(Target) Pydantic v2 모델 (불변, 최적화됨).
+    
+    거래소, 지역, 요청 타입을 식별하는 핵심 모델입니다.
+    frozen=True로 불변성을 보장하여 해시 가능하고 안전합니다.
+    """
 
-    exchange: ExchangeName
-    region: Region
-    request_type: RequestType
+    exchange: ExchangeName = Field(..., description="거래소 (upbit, binance, etc)")
+    region: Region = Field(..., description="지역 (korea, asia, etc)")
+    request_type: RequestType = Field(
+        ..., description="요청 타입 (ticker, orderbook, trade)"
+    )
 
-    model_config = ConfigDict(use_enum_values=True, extra="forbid")
+    model_config = OPTIMIZED_CONFIG
 
 # --- Strict and constrained DTOs for connect-success event ---
 # Pydantic v2: 검증단 빡빡하게 (StrictStr + StringConstraints)
@@ -75,13 +80,16 @@ SchemaVersionStr = Annotated[
 
 
 class ConnectRequestDTO(BaseIOModelDTO):
-    """연결 요청 이벤트 스키마(IO 모델)."""
+    """연결 요청 이벤트 스키마(IO 모델) - 최적화됨.
+    
+    불변 객체로 안전하게 WebSocket 연결 요청을 표현합니다.
+    """
 
-    socket_mode: str
-    symbols: str | list[str]
-    orderbook_depth: int | None = None
-    realtime_only: bool
-    correlation_id: str | None = None
+    socket_mode: str = Field(..., description="소켓 모드")
+    symbols: str | list[str] = Field(..., description="심볼 목록")
+    orderbook_depth: int | None = Field(None, description="오더북 깊이", ge=1)
+    realtime_only: bool = Field(..., description="실시간 전용 여부")
+    correlation_id: str | None = Field(None, description="상관관계 ID")
 
 
 class ConnectionConfigDTO(BaseIOModelDTO):
@@ -92,36 +100,38 @@ class ConnectionConfigDTO(BaseIOModelDTO):
 
 
 class CommandDTO(BaseIOModelDTO):
-    """명령 스키마(IO 모델)."""
+    """명령 스키마(IO 모델) - 최적화됨.
+    
+    ws.command 토픽에서 수신하는 연결 제어 명령입니다.
+    """
 
-    type: str
-    action: str
-    target: dict[str, str]
-    symbols: list[str]
-    connection: ConnectionConfigDTO
-    projection: list[str] | None = None
-    schema_version: str | None = None
-    ttl_ms: int | None = None
-    routing: dict[str, Any] | None = None
-    ts_issue: int | None = None
-    ts_ingest: int | None = None
-    timestamp: str | None = None
-    correlation_id: str | None = None
-
-    model_config = ConfigDict(extra="forbid")
+    type: str = Field(..., description="메시지 타입")
+    action: str = Field(..., description="액션 (connect_and_subscribe 등)")
+    target: dict[str, str] = Field(..., description="대상 정보")
+    symbols: list[str] = Field(..., description="심볼 목록")
+    connection: ConnectionConfigDTO = Field(..., description="연결 설정")
+    projection: list[str] | None = Field(None, description="프로젝션 필드")
+    schema_version: str | None = Field(None, description="스키마 버전")
+    ttl_ms: int | None = Field(None, description="TTL (밀리초)", gt=0)
+    routing: dict[str, Any] | None = Field(None, description="라우팅 정보")
+    ts_issue: int | None = Field(None, description="발행 타임스탬프")
+    ts_ingest: int | None = Field(None, description="수신 타임스탬프")
+    timestamp: str | None = Field(None, description="타임스탬프 (ISO 8601)")
+    correlation_id: str | None = Field(None, description="상관관계 ID")
 
 
 class DisconnectCommandDTO(BaseIOModelDTO):
-    """연결 해제 명령 이벤트 스키마."""
+    """연결 해제 명령 이벤트 스키마 - 최적화됨.
+    
+    ws.disconnection 토픽에서 수신하는 연결 종료 명령입니다.
+    """
 
-    type: str
-    action: str
-    target: dict[str, str]
-    reason: str | None = None
-    correlation_id: str | None = None
-    meta: dict[str, Any] | None = None
-
-    model_config = ConfigDict(extra="forbid")
+    type: str = Field(..., description="메시지 타입")
+    action: str = Field(..., description="액션 (disconnect 등)")
+    target: dict[str, str] = Field(..., description="대상 정보")
+    reason: str | None = Field(None, description="종료 사유")
+    correlation_id: str | None = Field(None, description="상관관계 ID")
+    meta: dict[str, Any] | None = Field(None, description="메타데이터")
 
 
 class ConnectSuccessMetaDTO(BaseIOModelDTO):
@@ -137,23 +147,21 @@ class ConnectSuccessMetaDTO(BaseIOModelDTO):
     observed_key: ObservedKeyStr
 
 
-class ConnectSuccessEventDTO(BaseIOModelDTO):
-    """웹소켓 연결 성공(ACK) 이벤트 DTO.
+class ConnectSuccessEventDTO(TimestampedModel):
+    """웹소켓 연결 성공(ACK) 이벤트 DTO - 최적화됨 (TimestampedModel 재사용).
 
+    특징:
     - action은 "connect_success"로 고정
     - ack는 "clear"로 고정
-    - symbol은 엄격한 문자열 제약을 적용
-    - timestamp_utc는 UTC aware 현재 시각 기본값
-    - extra 필드 금지
+    - symbol은 엄격한 문자열 제약 적용
+    - timestamp_utc는 자동 생성 (TimestampedModel)
+    - 불변 객체 (frozen=True)
     """
 
-    action: Literal["connect_success"]
-    ack: Literal["clear"]
-    target: ConnectionTargetDTO
-    symbol: SymbolStr
-    timestamp_utc: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    action: Literal["connect_success"] = Field(
+        default="connect_success", description="액션 타입 (고정)"
     )
-    meta: ConnectSuccessMetaDTO
-
-    model_config = ConfigDict(extra="forbid")
+    ack: Literal["clear"] = Field(default="clear", description="ACK 타입 (고정)")
+    target: ConnectionTargetDTO = Field(..., description="연결 대상")
+    symbol: SymbolStr = Field(..., description="심볼 (엄격한 검증)")
+    meta: ConnectSuccessMetaDTO = Field(..., description="메타데이터")
