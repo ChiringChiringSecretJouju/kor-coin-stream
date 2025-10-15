@@ -20,16 +20,20 @@ from src.core.connection.health_monitor import ConnectionHealthMonitor
 from src.core.connection.services.backoff import compute_next_backoff
 from src.core.connection.subscription_manager import SubscriptionManager
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
-from src.core.dto.internal.metrics import MinuteItemDomain
+from src.core.dto.internal.metrics import (
+    ProcessingMetricsDomain,
+    QualityMetricsDomain,
+    ReceptionMetricsDomain,
+)
 from src.core.types import (
     ExchangeName,
     Region,
     RequestType,
 )
-from src.infra.messaging.connect.producer_client import (
+from src.infra.messaging.connect.producers.backpressure.backpressure_event import (
     BackpressureEventProducer,
-    MetricsProducer,
 )
+from src.infra.messaging.connect.producers.metrics.metrics import MetricsProducer
 
 logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
@@ -93,11 +97,33 @@ class BaseWebsocketHandler(ABC):
         self._max_reconnect_attempts: int = websocket_settings.reconnect_max_attempts
         self._backoff_task: asyncio.Task[None] | None = None
 
-        # emit_factory는 컨텍스트(self.scope, self._metrics_producer)를 캡처한 비동기 함수일것.
-        async def _emit_factory(
-            items: list[MinuteItemDomain], start_ts_kst: int, end_ts_kst: int
+        # 3개의 독립 emit_factory (Layer별 독립 전송)
+        async def _reception_emit_factory(
+            items: list[ReceptionMetricsDomain], start_ts_kst: int, end_ts_kst: int
         ) -> None:
-            await self._metrics_producer.send_counting_batch(
+            await self._metrics_producer.send_reception_batch(
+                scope=self.scope,
+                items=items,
+                range_start_ts_kst=start_ts_kst,
+                range_end_ts_kst=end_ts_kst,
+                key=self.scope.to_key(),
+            )
+
+        async def _processing_emit_factory(
+            items: list[ProcessingMetricsDomain], start_ts_kst: int, end_ts_kst: int
+        ) -> None:
+            await self._metrics_producer.send_processing_batch(
+                scope=self.scope,
+                items=items,
+                range_start_ts_kst=start_ts_kst,
+                range_end_ts_kst=end_ts_kst,
+                key=self.scope.to_key(),
+            )
+
+        async def _quality_emit_factory(
+            items: list[QualityMetricsDomain], start_ts_kst: int, end_ts_kst: int
+        ) -> None:
+            await self._metrics_producer.send_quality_batch(
                 scope=self.scope,
                 items=items,
                 range_start_ts_kst=start_ts_kst,
@@ -106,7 +132,10 @@ class BaseWebsocketHandler(ABC):
             )
 
         self._minute_batch_counter = MinuteBatchCounter(
-            emit_factory=_emit_factory, logger=logger
+            reception_emit=_reception_emit_factory,
+            processing_emit=_processing_emit_factory,
+            quality_emit=_quality_emit_factory,
+            logger=logger,
         )
 
     def _log_status(self, status: str) -> None:

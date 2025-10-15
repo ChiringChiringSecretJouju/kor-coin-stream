@@ -40,7 +40,8 @@ FIELD_PRIORITIES: Final[tuple[SymbolFieldSpec, ...]] = (
     (("product_id",), True),        # Coinbase ⭐ NEW
     (("instId",), True),            # OKX (data 병합 후) ⭐ NEW
     (("ch",), True),                # Huobi ⭐ NEW (특수 처리)
-    
+    (("arg", "instId"), True),      # ✅ 추가
+
     # data 블록 내부 필드
     (("data", "target_currency"), False),
     (("data", "symbol"), True),

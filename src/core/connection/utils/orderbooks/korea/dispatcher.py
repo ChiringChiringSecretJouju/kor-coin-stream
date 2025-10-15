@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.core.connection.utils.orderbooks.korea.base import OrderbookParser
 from src.core.connection.utils.orderbooks.korea.bithumb import BithumbOrderbookParser
 from src.core.connection.utils.orderbooks.korea.coinone import CoinoneOrderbookParser
 from src.core.connection.utils.orderbooks.korea.korbit import KorbitOrderbookParser
 from src.core.connection.utils.orderbooks.korea.upbit import UpbitOrderbookParser
+from src.core.connection.utils.parsers.base import OrderbookParser
 from src.core.dto.io.realtime import StandardOrderbookDTO
 
 
@@ -43,20 +43,24 @@ class KoreaOrderbookDispatcher:
             if parser.can_parse(message):
                 return parser.parse(message)
         
-        raise ValueError(f"Unsupported orderbook format: {list(message.keys())}")
+        raise ValueError(
+            f"Unsupported Korea orderbook format (KoreaOrderbookDispatcher): "
+            f"keys={list(message.keys())}, "
+            f"response_type={message.get('response_type')}, "
+            f"sample_data={str(message)[:200]}"
+        )
 
 
-# 싱글톤 인스턴스
-_dispatcher: KoreaOrderbookDispatcher | None = None
+# Module-level 싱글톤 인스턴스 (Thread-safe eager initialization)
+_dispatcher = KoreaOrderbookDispatcher()
 
 
 def get_korea_orderbook_dispatcher() -> KoreaOrderbookDispatcher:
     """한국 거래소 Orderbook 디스패처 싱글톤 인스턴스 반환.
     
+    Thread-safe한 pre-initialized singleton을 반환합니다.
+    
     Returns:
         KoreaOrderbookDispatcher 인스턴스
     """
-    global _dispatcher
-    if _dispatcher is None:
-        _dispatcher = KoreaOrderbookDispatcher()
     return _dispatcher

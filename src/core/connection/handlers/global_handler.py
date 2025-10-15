@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 import orjson
@@ -19,7 +20,11 @@ from src.core.types import (
     TickerResponseData,
     TradeResponseData,
 )
-from src.infra.messaging.connect.producer_client import RealtimeDataProducer
+from src.infra.messaging.connect.producers.realtime.orderbook import (
+    OrderbookDataProducer,
+)
+from src.infra.messaging.connect.producers.realtime.ticker import TickerDataProducer
+from src.infra.messaging.connect.producers.realtime.trade import TradeDataProducer
 
 logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
@@ -58,7 +63,9 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
 
         # 배치 수집기 및 프로듀서 (글로벌 거래소 특화 설정)
         self._batch_collector: RealtimeBatchCollector | None = None
-        self._realtime_producer: RealtimeDataProducer | None = None
+        self._ticker_producer: TickerDataProducer | None = None
+        self._orderbook_producer: OrderbookDataProducer | None = None
+        self._trade_producer: TradeDataProducer | None = None
         self._batch_enabled = True  # 배치 수집 활성화 플래그
 
     def _extract_symbol(self, message: dict[str, Any]) -> str | None:
@@ -151,14 +158,31 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         if not self._batch_enabled:
             return
         try:
-            # RealtimeDataProducer 초기화
-            self._realtime_producer = RealtimeDataProducer()
+            # 타입별 Producer 초기화 (Avro 지원)
+            self._ticker_producer = TickerDataProducer(use_avro=False)
+            self._orderbook_producer = OrderbookDataProducer(use_avro=False)
+            self._trade_producer = TradeDataProducer(use_avro=False)
+
+            # Producer 시작
+            await self._ticker_producer.start_producer()
+            await self._orderbook_producer.start_producer()
+            await self._trade_producer.start_producer()
 
             # 배치 수집기 초기화 (글로벌 거래소 특화 설정)
             async def emit_batch(batch: list[dict[str, Any]]) -> bool:
-                """배치 전송 콜백 함수"""
-                if self._realtime_producer:
-                    return await self._realtime_producer.send_batch(
+                """배치 전송 콜백 함수 - 타입별 Producer 선택"""
+                request_type = self.scope.request_type
+                
+                if request_type == "ticker" and self._ticker_producer:
+                    return await self._ticker_producer.send_batch(
+                        scope=self.scope, batch=batch
+                    )
+                elif request_type == "orderbook" and self._orderbook_producer:
+                    return await self._orderbook_producer.send_batch(
+                        scope=self.scope, batch=batch
+                    )
+                elif request_type == "trade" and self._trade_producer:
+                    return await self._trade_producer.send_batch(
                         scope=self.scope, batch=batch
                     )
                 return False
@@ -196,9 +220,16 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             await self._batch_collector.stop()
             self._batch_collector = None
 
-        if self._realtime_producer:
-            await self._realtime_producer.stop_producer()
-            self._realtime_producer = None
+        # 타입별 Producer 정리
+        if self._ticker_producer:
+            await self._ticker_producer.stop_producer()
+            self._ticker_producer = None
+        if self._orderbook_producer:
+            await self._orderbook_producer.stop_producer()
+            self._orderbook_producer = None
+        if self._trade_producer:
+            await self._trade_producer.stop_producer()
+            self._trade_producer = None
 
         logger.info(f"{self.scope.exchange}: Batch collection system cleaned up")
 
@@ -406,14 +437,17 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
     async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
         """메시지 수신 및 처리 루프"""
         while not self.stop_requested:
+            # 처리 시작 시각 기록 (Latency 측정용)
+            start_time = time.time()
+            
             message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
             # 수신 알림으로 워치독에 최신 수신 시각을 전달
             self._health_monitor.notify_receive()
             parsed_message = self._parse_message(message)
 
-            # 심볼 추출 후 분 집계 카운트 증가
+            # 심볼 추출 후 분 집계 카운트 증가 (처리 시간 포함)
             symbol = self._extract_symbol(parsed_message)
-            self._minute_batch_counter.inc(symbol=symbol)
+            self._minute_batch_counter.inc(symbol=symbol, start_time=start_time)
 
             # 실제 메시지에서 심볼 추출 성공 시 ACK 발행 시도 (최초 1회)
             await self._try_emit_ack_from_message(symbol)

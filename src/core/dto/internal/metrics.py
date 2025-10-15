@@ -6,26 +6,51 @@ from typing import Any
 
 
 @dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
-class MinuteItemDomain:
-    """단일 분 집계 항목 DTO.
-
-    - 카운팅/메트릭 전송 경계에서 사용되는 불변 데이터 객체입니다.
-    - 외부 전송 이전 단계에서 표준 dict로 직렬화하여 사용합니다.
-    """
+class ReceptionMetricsDomain:
+    """Layer 1: 수신 메트릭 항목 (독립 전송용)."""
 
     minute_start_ts_kst: int
-    total: int
-    details: dict[str, int]
+    total_received: int  # WebSocket에서 받은 모든 메시지
+    total_parsed: int  # JSON 파싱 성공
+    total_parse_failed: int  # JSON 파싱 실패
+    bytes_received: int  # 수신 바이트 수
+
+
+@dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
+class ProcessingMetricsDomain:
+    """Layer 2: 처리 메트릭 항목 (독립 전송용)."""
+
+    minute_start_ts_kst: int
+    total_processed: int  # 정상 처리 (심볼 추출 성공)
+    total_failed: int  # 처리 실패 (심볼 추출 실패)
+    details: dict[str, int]  # 심볼별 집계
+
+
+@dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
+class QualityMetricsDomain:
+    """Layer 3: 품질 메트릭 항목 (독립 전송용)."""
+
+    minute_start_ts_kst: int
+    data_completeness: float  # 완전성 (0.0~1.0)
+    symbol_coverage: int  # 처리된 심볼 종류 수
+    avg_latency_ms: float  # 평균 처리 지연
+    p95_latency_ms: float  # 95 백분위 지연
+    p99_latency_ms: float  # 99 백분위 지연
+    health_score: float  # 종합 건강도 점수
 
 
 @dataclass(slots=True, eq=False, repr=False, match_args=False, kw_only=True)
 class MinuteStateDomain:
-    """내부 상태 캡슐화 (슬롯으로 오버헤드 축소)."""
+    """내부 상태 캡슐화 (다층 메트릭 시스템, 슬롯으로 오버헤드 축소)."""
 
     kst: timezone
     current_minute_key: int
-    total: int
-    symbols: dict[str, int]
+    # Layer 2: Processing Metrics
+    total: int  # 정상 처리된 메시지 (심볼 추출 성공)
+    symbols: dict[str, int]  # 심볼별 집계
+    # Layer 1: Raw Reception Metrics
+    total_received: int  # 수신한 모든 메시지
+    total_failed: int  # 심볼 추출 실패
     # NOTE: buffer는 직렬화 경계 전 단계의 임시 저장소입니다.
     # - 내부 로직은 MinuteItem으로 다루지만, 프로듀서 경계에서 직렬화 용이성을 위해
     #   dict 형태로 보관합니다.

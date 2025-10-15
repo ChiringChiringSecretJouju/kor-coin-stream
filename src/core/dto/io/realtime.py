@@ -16,13 +16,13 @@ from src.core.dto.io._base import OPTIMIZED_CONFIG, MarketContextModel
 # 엄격한 타입 제약 - Orderbook
 # ========================================
 
-# 가격/수량 문자열 (소수점 표현)
+# 가격/수량 문자열 (소수점 및 과학적 표기법 지원)
 PriceStr = Annotated[
     StrictStr,
     StringConstraints(
         min_length=1,
         max_length=32,
-        pattern=r"^\d+(?:\.\d+)?$",
+        pattern=r"^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$",
         strip_whitespace=True,
     ),
 ]

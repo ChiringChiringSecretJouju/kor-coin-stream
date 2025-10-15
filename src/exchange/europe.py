@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any, override
 
 from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
-from src.core.types import TickerResponseData
+from src.core.types import OrderbookResponseData, TickerResponseData, TradeResponseData
 
 
 @dataclass(slots=True, frozen=True)

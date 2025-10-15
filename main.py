@@ -15,6 +15,8 @@ import contextlib
 import os
 from pathlib import Path
 
+import uvloop
+
 from src.common.events import ErrorEvent, EventBus
 from src.common.exceptions.error_dispatcher import ErrorDispatcher
 from src.common.logger import PipelineLogger
@@ -173,6 +175,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
+        uvloop.install()
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n프로그램이 종료되었습니다.")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.core.connection.utils.trades.korea.base import TradeParser
+from src.core.connection.utils.parsers.base import TradeParser
 from src.core.connection.utils.trades.korea.bithumb import BithumbTradeParser
 from src.core.connection.utils.trades.korea.coinone import CoinoneTradeParser
 from src.core.connection.utils.trades.korea.korbit import KorbitTradeParser
@@ -47,17 +47,16 @@ class KoreaTradeDispatcher:
         raise ValueError(f"Unsupported trade format: {list(message.keys())}")
 
 
-# 싱글톤 인스턴스
-_dispatcher: KoreaTradeDispatcher | None = None
+# Module-level 싱글톤 인스턴스 (Thread-safe eager initialization)
+_dispatcher = KoreaTradeDispatcher()
 
 
 def get_korea_trade_dispatcher() -> KoreaTradeDispatcher:
     """한국 거래소 Trade 디스패처 싱글톤 인스턴스 반환.
     
+    Thread-safe한 pre-initialized singleton을 반환합니다.
+    
     Returns:
         KoreaTradeDispatcher 인스턴스
     """
-    global _dispatcher
-    if _dispatcher is None:
-        _dispatcher = KoreaTradeDispatcher()
     return _dispatcher

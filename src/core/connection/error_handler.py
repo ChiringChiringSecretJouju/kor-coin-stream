@@ -63,7 +63,12 @@ class ConnectionErrorHandler:
         backoff: float,
         **additional_context: Any,  # Any 사용 이유: 거래소별 다양한 추가 컨텍스트를 수용하기 위함
     ) -> None:
-        """연결 관련 에러를 통합 디스패처로 처리 (전략 기반)"""
+        """연결 관련 에러를 통합 디스패처로 처리 (전략 기반)
+        
+        Note: kind="connection"으로 지정하여 WebSocket 연결 전용 규칙 적용.
+              TimeoutError → CONNECT_FAILED (circuit_break=True)
+              WebSocketException → CONNECT_FAILED (circuit_break=True)
+        """
         context = {
             "url": url,
             "attempt": attempt,
@@ -73,7 +78,7 @@ class ConnectionErrorHandler:
 
         await dispatch_error(
             exc=err if isinstance(err, Exception) else Exception(str(err)),
-            kind="connection",
+            kind="connection",  # RULES_FOR_CONNECTION 사용 (명확한 의미)
             target=self._target,
             context=context,
         )

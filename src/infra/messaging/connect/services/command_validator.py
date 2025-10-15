@@ -22,7 +22,7 @@ from src.core.dto.io.commands import (
 )
 from src.core.dto.io.events import DlqEventDTO, WsEventErrorMetaDTO
 from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, RequestType
-from src.infra.messaging.connect.producer_client import DlqProducer
+from src.infra.messaging.connect.producers.error.dlq import DlqProducer
 
 logger: Final = PipelineLogger(__name__)
 T = TypeVar("T", bound=BaseModel)

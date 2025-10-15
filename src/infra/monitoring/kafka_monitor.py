@@ -14,7 +14,9 @@ from src.infra.messaging.clients.json_client import (
     AsyncConsumerWrapper as JsonConsumerWrapper,
 )
 from src.infra.messaging.clients.json_client import create_consumer
-from src.infra.messaging.connect.producer_client import BatchMonitoringProducer
+from src.infra.messaging.connect.producers.monitoring.batch_monitoring import (
+    BatchMonitoringProducer,
+)
 
 from .batch_analyzer import BatchAnalyzer
 

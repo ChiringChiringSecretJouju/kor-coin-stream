@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.core.connection.utils.trades.korea.base import TradeParser
+from src.core.connection.utils.parsers.base import TradeParser
 from src.core.dto.io.realtime import StandardTradeDTO
 
 

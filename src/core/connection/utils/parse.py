@@ -7,12 +7,16 @@
 from typing import Any
 
 from src.core.connection.utils.dict_utils import update_dict
+from src.core.connection.utils.orderbooks.asia import get_asia_orderbook_dispatcher
 from src.core.connection.utils.orderbooks.korea import get_korea_orderbook_dispatcher
+from src.core.connection.utils.orderbooks.na import get_na_orderbook_dispatcher
 from src.core.connection.utils.timestamp import (
     get_regional_datetime,
     get_regional_timestamp_ms,
 )
+from src.core.connection.utils.trades.asia import get_asia_trade_dispatcher
 from src.core.connection.utils.trades.korea import get_korea_trade_dispatcher
+from src.core.connection.utils.trades.na import get_na_trade_dispatcher
 from src.core.dto.io.realtime import StandardOrderbookDTO, StandardTradeDTO
 
 # Re-export for backward compatibility
@@ -23,6 +27,10 @@ __all__ = [
     "preprocess_ticker_message",
     "preprocess_orderbook_message",
     "preprocess_trade_message",
+    "preprocess_asia_orderbook_message",
+    "preprocess_na_orderbook_message",
+    "preprocess_asia_trade_message",
+    "preprocess_na_trade_message",
 ]
 
 
@@ -137,7 +145,7 @@ def preprocess_orderbook_message(
 def preprocess_trade_message(
     parsed_message: dict[str, Any], projection: list[str] | None
 ) -> StandardTradeDTO:
-    """Trade 메시지 전처리 (새로운 파서 시스템 사용).
+    """Trade 메시지 전처리 (새로운 파서 시스템 사용 - 한국 거래소).
 
     모든 한국 거래소의 Trade 데이터를 Upbit 표준 포맷(Pydantic DTO)으로 통일합니다.
 
@@ -160,4 +168,76 @@ def preprocess_trade_message(
     """
     # 디스패처로 자동 파싱
     dispatcher = get_korea_trade_dispatcher()
+    return dispatcher.parse(parsed_message)
+
+
+def preprocess_asia_orderbook_message(
+    parsed_message: dict[str, Any], projection: list[str] | None
+) -> StandardOrderbookDTO:
+    """Orderbook 메시지 전처리 (새로운 파서 시스템 사용 - 아시아 거래소).
+
+    아시아 거래소(Binance, Bybit, Huobi, OKX)의 Orderbook 데이터를 표준 포맷으로 통일합니다.
+
+    Args:
+        parsed_message: 원본 메시지
+        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
+
+    Returns:
+        표준화된 orderbook (Pydantic DTO)
+    """
+    dispatcher = get_asia_orderbook_dispatcher()
+    return dispatcher.parse(parsed_message)
+
+
+def preprocess_na_orderbook_message(
+    parsed_message: dict[str, Any], projection: list[str] | None
+) -> StandardOrderbookDTO:
+    """Orderbook 메시지 전처리 (새로운 파서 시스템 사용 - 북미 거래소).
+
+    북미 거래소(Coinbase, Kraken)의 Orderbook 데이터를 표준 포맷으로 통일합니다.
+
+    Args:
+        parsed_message: 원본 메시지
+        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
+
+    Returns:
+        표준화된 orderbook (Pydantic DTO)
+    """
+    dispatcher = get_na_orderbook_dispatcher()
+    return dispatcher.parse(parsed_message)
+
+
+def preprocess_asia_trade_message(
+    parsed_message: dict[str, Any], projection: list[str] | None
+) -> StandardTradeDTO:
+    """Trade 메시지 전처리 (새로운 파서 시스템 사용 - 아시아 거래소).
+
+    아시아 거래소(Binance, Bybit, Huobi, OKX)의 Trade 데이터를 표준 포맷으로 통일합니다.
+
+    Args:
+        parsed_message: 원본 메시지
+        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
+
+    Returns:
+        표준화된 trade (Pydantic DTO)
+    """
+    dispatcher = get_asia_trade_dispatcher()
+    return dispatcher.parse(parsed_message)
+
+
+def preprocess_na_trade_message(
+    parsed_message: dict[str, Any], projection: list[str] | None
+) -> StandardTradeDTO:
+    """Trade 메시지 전처리 (새로운 파서 시스템 사용 - 북미 거래소).
+
+    북미 거래소(Coinbase, Kraken)의 Trade 데이터를 표준 포맷으로 통일합니다.
+
+    Args:
+        parsed_message: 원본 메시지
+        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
+
+    Returns:
+        표준화된 trade (Pydantic DTO)
+    """
+    dispatcher = get_na_trade_dispatcher()
     return dispatcher.parse(parsed_message)

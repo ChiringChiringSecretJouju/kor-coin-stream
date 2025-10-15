@@ -41,8 +41,8 @@ def producer_config(**overrides: Any) -> dict:
         "request.timeout.ms": 30000,
         "delivery.timeout.ms": 120000,  # 전체 전송 마감시간.
         # 처리량·지연 균형(배칭)
-        "linger.ms": 5,  # queue.buffering.max.ms의 현대식 별칭.
-        "batch.size": 131072,  # (신규 지원) 배치 바이트 상한.
+        "linger.ms": 30,  # queue.buffering.max.ms의 현대식 별칭.
+        "batch.size": 331072,  # (신규 지원) 배치 바이트 상한.
         # 압축
         "compression.type": "lz4",
     }

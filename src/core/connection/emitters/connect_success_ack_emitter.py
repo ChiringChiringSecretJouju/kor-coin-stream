@@ -11,7 +11,9 @@ from src.core.dto.io.commands import (
     ConnectSuccessEventDTO,
     ConnectSuccessMetaDTO,
 )
-from src.infra.messaging.connect.producer_client import ConnectSuccessEventProducer
+from src.infra.messaging.connect.producers.control.connect_success import (
+    ConnectSuccessEventProducer,
+)
 
 logger = PipelineLogger.get_logger("ack_emitter", "connection")
 

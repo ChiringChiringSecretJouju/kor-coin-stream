@@ -28,11 +28,6 @@ Settings 주입 (NEW!):
     kafka_bootstrap = container.messaging.kafka_config().bootstrap_servers
 """
 
-from __future__ import annotations
-
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
-
 from dependency_injector import containers, providers
 
 from src.application.connection_registry import ConnectionRegistry
@@ -42,6 +37,14 @@ from src.application.orchestrator import (
     StreamOrchestrator,
     SubscriptionManager,
     WebsocketConnector,
+)
+from src.config.init_infra import (
+    init_error_producer,
+    init_metrics_producer,
+    init_orderbook_producer,
+    init_redis,
+    init_ticker_producer,
+    init_trade_producer,
 )
 from src.config.settings import (
     kafka_settings,
@@ -63,46 +66,30 @@ from src.exchange.korea import (
     UpbitWebsocketHandler,
 )
 from src.exchange.na import CoinbaseWebsocketHandler, KrakenWebsocketHandler
-from src.infra.cache.cache_client import RedisConnectionManager
 from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
 )
-from src.infra.messaging.connect.producer_client import (
-    ErrorEventProducer,
-    MetricsProducer,
-)
 
-# ========================================
-# 헬퍼 함수 (DI Container 외부)
-# ========================================
-
-
-@asynccontextmanager
-async def init_redis() -> AsyncIterator[RedisConnectionManager]:
-    """Redis 초기화 및 정리를 위한 async context manager"""
-    manager = RedisConnectionManager.get_instance()
-    await manager.initialize()
-    yield manager
-    await manager.close()
-
-
-@asynccontextmanager
-async def init_error_producer(use_avro: bool) -> AsyncIterator[ErrorEventProducer]:
-    """ErrorEventProducer 초기화 및 정리"""
-    producer = ErrorEventProducer(use_avro=use_avro)
-    await producer.start_producer()
-    yield producer
-    await producer.stop_producer()
-
-
-@asynccontextmanager
-async def init_metrics_producer(use_avro: bool) -> AsyncIterator[MetricsProducer]:
-    """MetricsProducer 초기화 및 정리"""
-    producer = MetricsProducer(use_avro=use_avro)
-    await producer.start_producer()
-    yield producer
-    await producer.stop_producer()
+# Handler 클래스 매핑 (거래소 이름 → 클래스)
+# 이것만 코드에 정의 (클래스는 import 필요하므로)
+HANDLER_CLASS_MAP = {
+    # 한국
+    "upbit": UpbitWebsocketHandler,
+    "bithumb": BithumbWebsocketHandler,
+    "coinone": CoinoneWebsocketHandler,
+    "korbit": KorbitWebsocketHandler,
+    # 아시아
+    "binance": BinanceWebsocketHandler,
+    "bybit": BybitWebsocketHandler,
+    "okx": OKXWebsocketHandler,
+    "huobi": HuobiWebsocketHandler,
+    # 유럽
+    "bitfinex": BitfinexWebsocketHandler,
+    # 북미
+    "coinbase": CoinbaseWebsocketHandler,
+    "kraken": KrakenWebsocketHandler,
+}
 
 
 # ========================================
@@ -156,30 +143,21 @@ class MessagingContainer(containers.DeclarativeContainer):
         use_avro=config.use_avro.as_(bool),
     )
 
+    # ===== Realtime Data Producers =====
+    ticker_producer = providers.Resource(
+        init_ticker_producer,
+        use_avro=config.use_avro.as_(bool),
+    )
 
-# ========================================
-# 3. Handler Containers (거래소 핸들러 - 지역별 분리)
-# ========================================
+    orderbook_producer = providers.Resource(
+        init_orderbook_producer,
+        use_avro=config.use_avro.as_(bool),
+    )
 
-# Handler 클래스 매핑 (거래소 이름 → 클래스)
-# 이것만 코드에 정의 (클래스는 import 필요하므로)
-HANDLER_CLASS_MAP = {
-    # 한국
-    "upbit": UpbitWebsocketHandler,
-    "bithumb": BithumbWebsocketHandler,
-    "coinone": CoinoneWebsocketHandler,
-    "korbit": KorbitWebsocketHandler,
-    # 아시아
-    "binance": BinanceWebsocketHandler,
-    "bybit": BybitWebsocketHandler,
-    "okx": OKXWebsocketHandler,
-    "huobi": HuobiWebsocketHandler,
-    # 유럽
-    "bitfinex": BitfinexWebsocketHandler,
-    # 북미
-    "coinbase": CoinbaseWebsocketHandler,
-    "kraken": KrakenWebsocketHandler,
-}
+    trade_producer = providers.Resource(
+        init_trade_producer,
+        use_avro=config.use_avro.as_(bool),
+    )
 
 
 # ========================================

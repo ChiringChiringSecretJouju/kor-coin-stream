@@ -26,7 +26,10 @@ from src.common.exceptions.exception_rule import (
 from src.common.logger import PipelineLogger
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.dto.io.events import DlqEventDTO
-from src.infra.messaging.connect.producer_client import DlqProducer, ErrorEventProducer
+from src.infra.messaging.connect.producers.error.dlq import DlqProducer
+from src.infra.messaging.connect.producers.error.error_event import (
+    ErrorEventProducer,
+)
 
 from .error_dto_builder import (
     _make_json_serializable,

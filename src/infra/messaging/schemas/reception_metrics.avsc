@@ -1,0 +1,102 @@
+{
+  "type": "record",
+  "name": "ReceptionMetricsEvent",
+  "namespace": "com.chiringchiring.metrics.reception",
+  "doc": "Layer 1: 원천 수신 메트릭 스키마 (Raw Reception Metrics)",
+  "fields": [
+    {
+      "name": "ticket_id",
+      "type": "string",
+      "doc": "메시지 추적 UUID"
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "doc": "지역 (korea, asia, na, eu)"
+    },
+    {
+      "name": "exchange",
+      "type": "string",
+      "doc": "거래소명 (upbit, binance, bybit 등)"
+    },
+    {
+      "name": "request_type",
+      "type": "string",
+      "doc": "요청 타입 (ticker, orderbook, trade)"
+    },
+    {
+      "name": "batch",
+      "type": {
+        "type": "record",
+        "name": "ReceptionBatch",
+        "doc": "수신 메트릭 배치",
+        "fields": [
+          {
+            "name": "ticket_id",
+            "type": "string",
+            "doc": "배치 추적 UUID"
+          },
+          {
+            "name": "range_start_ts_kst",
+            "type": "long",
+            "doc": "배치 시작 시간 (KST Unix timestamp)"
+          },
+          {
+            "name": "range_end_ts_kst",
+            "type": "long",
+            "doc": "배치 종료 시간 (KST Unix timestamp)"
+          },
+          {
+            "name": "bucket_size_sec",
+            "type": "int",
+            "doc": "버킷 크기 (초 단위, 기본 60초)"
+          },
+          {
+            "name": "items",
+            "type": {
+              "type": "array",
+              "items": {
+                "type": "record",
+                "name": "ReceptionMetricsItem",
+                "doc": "분 단위 수신 메트릭",
+                "fields": [
+                  {
+                    "name": "minute_start_ts_kst",
+                    "type": "long",
+                    "doc": "분 시작 타임스탬프 (KST Unix timestamp)"
+                  },
+                  {
+                    "name": "total_received",
+                    "type": "int",
+                    "doc": "수신한 모든 WebSocket 메시지 수"
+                  },
+                  {
+                    "name": "total_parsed",
+                    "type": "int",
+                    "doc": "JSON 파싱 성공 수"
+                  },
+                  {
+                    "name": "total_parse_failed",
+                    "type": "int",
+                    "doc": "JSON 파싱 실패 수"
+                  },
+                  {
+                    "name": "bytes_received",
+                    "type": "long",
+                    "doc": "수신한 총 바이트 수"
+                  }
+                ]
+              }
+            },
+            "doc": "분 단위 수신 메트릭 배열"
+          },
+          {
+            "name": "version",
+            "type": "int",
+            "doc": "스키마 버전"
+          }
+        ]
+      }
+    }
+  ]
+}

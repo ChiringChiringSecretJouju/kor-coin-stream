@@ -25,7 +25,9 @@ from src.core.types import (
     SocketParams,
 )
 from src.infra.cache.cache_store import WebsocketConnectionCache
-from src.infra.messaging.connect.producer_client import ErrorEventProducer
+from src.infra.messaging.connect.producers.error.error_event import (
+    ErrorEventProducer,
+)
 
 logger = PipelineLogger.get_logger("orchestrator_refactored", "app")
 

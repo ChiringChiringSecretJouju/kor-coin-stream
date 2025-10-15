@@ -15,57 +15,102 @@ from src.core.dto.io._base import OPTIMIZED_CONFIG, BaseIOModelDTO, MarketContex
 # ========================================
 
 
-class MinuteItemDTO(BaseModel):
-    """단일 분 집계 항목 DTO - 최적화됨 (불변).
+class ReceptionMetricsDTO(BaseModel):
+    """Layer 1: 수신 메트릭 DTO (독립 전송용)."""
 
-    카운팅/메트릭 전송 시 사용되는 DTO입니다.
+    minute_start_ts_kst: int = Field(..., description="분 시작 타임스탬프", gt=0)
+    total_received: int = Field(..., description="수신한 모든 메시지 수", ge=0)
+    total_parsed: int = Field(..., description="JSON 파싱 성공 수", ge=0)
+    total_parse_failed: int = Field(..., description="JSON 파싱 실패 수", ge=0)
+    bytes_received: int = Field(..., description="수신 바이트 수", ge=0)
 
-    Fields:
-        minute_start_ts_kst: 분 시작 타임스탬프 (KST, Unix timestamp)
-        total: 해당 분의 총 메시지 수
-        details: 심볼별 카운트 (예: {"BTCUSDT_COUNT": 7, "ETHUSDT_COUNT": 3})
-    """
+    model_config = OPTIMIZED_CONFIG
 
-    minute_start_ts_kst: int = Field(
-        ..., description="분 시작 타임스탬프 (KST Unix timestamp)", gt=0
-    )
-    total: int = Field(..., description="총 메시지 수", ge=0)
+
+class ProcessingMetricsDTO(BaseModel):
+    """Layer 2: 처리 메트릭 DTO (독립 전송용)."""
+
+    minute_start_ts_kst: int = Field(..., description="분 시작 타임스탬프", gt=0)
+    total_processed: int = Field(..., description="정상 처리된 메시지 수", ge=0)
+    total_failed: int = Field(..., description="처리 실패 메시지 수", ge=0)
     details: dict[str, int] = Field(..., description="심볼별 카운트")
 
     model_config = OPTIMIZED_CONFIG
 
 
+class QualityMetricsDTO(BaseModel):
+    """Layer 3: 품질 메트릭 DTO (독립 전송용)."""
+
+    minute_start_ts_kst: int = Field(..., description="분 시작 타임스탬프", gt=0)
+    data_completeness: float = Field(..., description="데이터 완전성", ge=0.0, le=1.0)
+    symbol_coverage: int = Field(..., description="처리된 심볼 종류 수", ge=0)
+    avg_latency_ms: float = Field(..., description="평균 처리 지연 (ms)", ge=0.0)
+    p95_latency_ms: float = Field(..., description="95 백분위 지연 (ms)", ge=0.0)
+    p99_latency_ms: float = Field(..., description="99 백분위 지연 (ms)", ge=0.0)
+    health_score: float = Field(..., description="종합 건강도 점수", ge=0.0, le=100.0)
+
+    model_config = OPTIMIZED_CONFIG
+
+
 # ========================================
-# 카운팅 배치 (Counting Batch)
+# Layer별 독립 배치 (Separate Batches per Layer)
 # ========================================
 
 
-class CountingBatchDTO(BaseIOModelDTO):
-    """카운팅 배치 페이로드 (Pydantic v2 모델).
+class ReceptionBatchDTO(BaseIOModelDTO):
+    """Layer 1: 수신 메트릭 배치 (독립 전송)."""
 
-    - 카운팅 아이템 목록과 범위 메타데이터를 포함합니다.
-    - unknown/extra 필드는 금지합니다.
-    - 타입 안정성: MinuteItemDTO 리스트 사용
-    """
-
-    ticket_id: str  # UUID
+    ticket_id: str
     range_start_ts_kst: int
     range_end_ts_kst: int
     bucket_size_sec: int
-    items: list[MinuteItemDTO]  # 타입 안정성 보장
+    items: list[ReceptionMetricsDTO]
     version: int
 
 
-class MarketCountingDTO(MarketContextModel):
-    """마켓 소켓 카운팅 메시지 - 최적화됨 (MarketContextModel 재사용).
+class ProcessingBatchDTO(BaseIOModelDTO):
+    """Layer 2: 처리 메트릭 배치 (독립 전송)."""
 
-    특징:
-    - region/exchange/request_type는 MarketContextModel에서 자동 제공
-    - 불변 객체 (frozen=True)
-    - unknown/extra 필드 금지
-    """
+    ticket_id: str
+    range_start_ts_kst: int
+    range_end_ts_kst: int
+    bucket_size_sec: int
+    items: list[ProcessingMetricsDTO]
+    version: int
 
-    batch: CountingBatchDTO = Field(..., description="카운팅 배치 데이터")
+
+class QualityBatchDTO(BaseIOModelDTO):
+    """Layer 3: 품질 메트릭 배치 (독립 전송)."""
+
+    ticket_id: str
+    range_start_ts_kst: int
+    range_end_ts_kst: int
+    bucket_size_sec: int
+    items: list[QualityMetricsDTO]
+    version: int
+
+
+# ========================================
+# Layer별 Kafka 메시지 (Market Context 포함)
+# ========================================
+
+
+class ReceptionMetricsMessage(MarketContextModel):
+    """Layer 1: 수신 메트릭 메시지 (Kafka 전송용)."""
+
+    batch: ReceptionBatchDTO = Field(..., description="수신 메트릭 배치")
+
+
+class ProcessingMetricsMessage(MarketContextModel):
+    """Layer 2: 처리 메트릭 메시지 (Kafka 전송용)."""
+
+    batch: ProcessingBatchDTO = Field(..., description="처리 메트릭 배치")
+
+
+class QualityMetricsMessage(MarketContextModel):
+    """Layer 3: 품질 메트릭 메시지 (Kafka 전송용)."""
+
+    batch: QualityBatchDTO = Field(..., description="품질 메트릭 배치")
 
 
 # ========================================

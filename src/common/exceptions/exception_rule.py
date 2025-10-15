@@ -62,17 +62,50 @@ SOCKET_EXCEPTIONS = (
     KeyError,
 )
 
+# 네트워크 관련 OSError (세밀한 분류)
+NETWORK_ERRORS = (
+    ConnectionRefusedError,  # 연결 거부 (서버 다운)
+    ConnectionResetError,  # 연결 리셋 (네트워크 불안정)
+    ConnectionAbortedError,  # 연결 중단
+    BrokenPipeError,  # 파이프 손상
+    TimeoutError,  # 일반 타임아웃
+)
 
-# 1) asyncio 규칙 (ws/infra)
+
+# 1) asyncio 규칙 (ws/infra/connection)
 RULES_ASYNCIO: list[RuleDomain] = [
     RuleDomain(
-        kinds=("ws", "infra"),
+        kinds=("ws", "infra", "connection"),
         exc=asyncio.CancelledError,
         result=(ErrorDomain.ORCHESTRATOR, ErrorCode.ORCHESTRATOR_ERROR, False),
     ),
     RuleDomain(
-        kinds=("ws", "infra"),
+        kinds=("ws", "infra", "connection"),
         exc=asyncio.TimeoutError,
+        result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
+    ),
+]
+
+# 1-1) 네트워크 에러 규칙 (connection 전용, 우선순위 높음)
+RULES_NETWORK: list[RuleDomain] = [
+    RuleDomain(
+        kinds=("connection", "ws", "infra"),
+        exc=ConnectionRefusedError,
+        result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
+    ),
+    RuleDomain(
+        kinds=("connection", "ws", "infra"),
+        exc=ConnectionResetError,
+        result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
+    ),
+    RuleDomain(
+        kinds=("connection", "ws", "infra"),
+        exc=(ConnectionAbortedError, BrokenPipeError),
+        result=(ErrorDomain.CONNECTION, ErrorCode.DISCONNECT_FAILED, True),
+    ),
+    RuleDomain(
+        kinds=("connection", "ws", "infra"),
+        exc=TimeoutError,  # 일반 타임아웃 (asyncio.TimeoutError와 구분)
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
     ),
 ]
@@ -80,17 +113,44 @@ RULES_ASYNCIO: list[RuleDomain] = [
 # 2) Type/역직렬화 및 기타 공통 규칙 (모든 경계 공통)
 RULES_TYPE: list[RuleDomain] = [
     RuleDomain(
-        kinds=("infra", "kafka", "redis", "ws"),
+        kinds=(
+            "infra",
+            "kafka",
+            "redis",
+            "ws",
+            "connection",
+            "subscription",
+            "orchestrator",
+        ),
         exc=DESERIALIZATION_ERRORS,
         result=(ErrorDomain.DESERIALIZATION, ErrorCode.DESERIALIZATION_ERROR, False),
     ),
 ]
 
-# 4) 기타(소켓/웹소켓 등) 규칙 (ws/infra)
+# 4) WebSocket 전용 규칙 (구체적 예외 먼저)
+RULES_WEBSOCKET: list[RuleDomain] = [
+    RuleDomain(
+        kinds=("ws", "connection", "infra"),
+        exc=InvalidStatus,  # HTTP 업그레이드 실패 (401, 403, 503 등)
+        result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
+    ),
+    RuleDomain(
+        kinds=("ws", "connection", "infra"),
+        exc=ConnectionClosed,  # WebSocket 정상/비정상 종료
+        result=(ErrorDomain.CONNECTION, ErrorCode.DISCONNECT_FAILED, True),
+    ),
+    RuleDomain(
+        kinds=("ws", "connection", "infra"),
+        exc=WebSocketException,  # 일반 WebSocket 예외
+        result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
+    ),
+]
+
+# 5) 기타(소켓 등) 규칙 (포괄적)
 RULES_OTHERS: list[RuleDomain] = [
     RuleDomain(
-        kinds=("ws", "infra", "orchestrator"),
-        exc=SOCKET_EXCEPTIONS,
+        kinds=("ws", "infra", "orchestrator", "connection"),
+        exc=OSError,  # 일반 OS 레벨 에러 (가장 포괄적)
         result=(ErrorDomain.CONNECTION, ErrorCode.CONNECT_FAILED, True),
     ),
 ]
@@ -141,9 +201,10 @@ RULES_REDIS: list[RuleDomain] = [
 # 5) 전체 규칙 (구체 -> 포괄 순서를 유지하며 결합)
 # 주의: 매칭 우선순위를 보장하기 위해 선언 순서를 유지합니다.
 RULES_FOR_WS: list[RuleDomain] = [
-    *RULES_ASYNCIO,
-    *RULES_TYPE,
-    *RULES_OTHERS,
+    *RULES_ASYNCIO,  # asyncio.TimeoutError, CancelledError (최우선)
+    *RULES_WEBSOCKET,  # InvalidStatus, ConnectionClosed, WebSocketException
+    *RULES_TYPE,  # 역직렬화 에러
+    *RULES_OTHERS,  # OSError (가장 포괄적)
 ]
 
 RULES_FOR_KAFKA: list[RuleDomain] = [
@@ -162,21 +223,66 @@ RULES_FOR_INFRA: list[RuleDomain] = [
     *RULES_REDIS,
 ]
 
-# 예상되는 예외
+# 6) 도메인별 전용 규칙 (명확한 의미 부여)
+# Connection 관련 (WebSocket 연결/재연결)
+# 우선순위: 구체적 네트워크 에러 → asyncio → WebSocket → 일반 소켓 → 역직렬화
+RULES_FOR_CONNECTION: list[RuleDomain] = [
+    *RULES_NETWORK,  # ConnectionRefusedError, ConnectionResetError 등 (최우선)
+    *RULES_ASYNCIO,  # asyncio.TimeoutError, CancelledError
+    *RULES_WEBSOCKET,  # InvalidStatus, ConnectionClosed, WebSocketException
+    *RULES_OTHERS,  # OSError (가장 포괄적)
+    *RULES_TYPE,  # 역직렬화 에러
+]
+
+# Subscription 관련 (구독/재구독)
+RULES_FOR_SUBSCRIPTION: list[RuleDomain] = [
+    *RULES_TYPE,  # 파라미터 파싱 에러 (최우선)
+    *RULES_WEBSOCKET,  # WebSocket 에러
+    *RULES_OTHERS,  # 일반 소켓 에러
+]
+
+# Orchestrator 관련 (연결 관리, 태스크 관리)
+RULES_FOR_ORCHESTRATOR: list[RuleDomain] = [
+    RuleDomain(
+        kinds=("orchestrator",),
+        exc=asyncio.CancelledError,
+        result=(ErrorDomain.ORCHESTRATOR, ErrorCode.ORCHESTRATOR_ERROR, False),
+    ),
+    *RULES_TYPE,  # 설정/파라미터 에러
+]
+
+# 예상되는 모든 예외 (포괄적 리스트)
 EXPECTED_EXCEPTIONS = (
-    *RULES_OTHERS,
-    *SOCKET_EXCEPTIONS,
+    # 네트워크
+    *NETWORK_ERRORS,
+    # WebSocket
+    InvalidStatus,
+    WebSocketException,
+    ConnectionClosed,
+    # 소켓
+    OSError,
+    # asyncio
+    asyncio.TimeoutError,
+    asyncio.CancelledError,
+    # 역직렬화
     *DESERIALIZATION_ERRORS,
+    # Kafka
     *KafkaException,
+    # Redis
     *RedisException,
 )
 
 RuleDict: TypeAlias = dict[str, list[RuleDomain]]
 RULES_BY_KIND: RuleDict = {
+    # Infrastructure 레이어
     "kafka": RULES_FOR_KAFKA,
     "redis": RULES_FOR_REDIS,
-    "ws": RULES_FOR_WS,
     "infra": RULES_FOR_INFRA,
+    # Domain/Application 레이어
+    "ws": RULES_FOR_WS,
+    "connection": RULES_FOR_CONNECTION,  # WebSocket 연결 전용
+    "subscription": RULES_FOR_SUBSCRIPTION,  # 구독 관리 전용
+    "orchestrator": RULES_FOR_ORCHESTRATOR,  # 오케스트레이터 전용
 }
 
 

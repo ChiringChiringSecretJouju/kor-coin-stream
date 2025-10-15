@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.core.connection.utils.dict_utils import update_dict
-from src.core.connection.utils.trades.korea.base import TradeParser
+from src.core.connection.utils.parsers.base import TradeParser
 from src.core.dto.io.realtime import StandardTradeDTO
 
 
@@ -28,6 +28,11 @@ class CoinoneTradeParser(TradeParser):
         Returns:
             파싱 가능하면 True
         """
+        # 1. response_type이 "DATA"인 경우만 처리 (SUBSCRIBED 제외)
+        if message.get("response_type") != "DATA":
+            return False
+        
+        # 2. data 객체 및 필수 필드 체크
         data = message.get("data")
         if not isinstance(data, dict):
             return False
