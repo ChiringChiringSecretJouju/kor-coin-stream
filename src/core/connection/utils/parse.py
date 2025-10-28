@@ -6,6 +6,7 @@
 
 from typing import Any
 
+from src.core.connection._utils import parse_symbol_pair
 from src.core.connection.utils.dict_utils import update_dict
 from src.core.connection.utils.orderbooks.asia import get_asia_orderbook_dispatcher
 from src.core.connection.utils.orderbooks.korea import get_korea_orderbook_dispatcher
@@ -37,7 +38,13 @@ __all__ = [
 def preprocess_ticker_message(
     parsed_message: dict[str, Any], projection: list[str] | None
 ) -> dict[str, Any]:
-    """공통 티커 메시지 전처리 (projection 필터링 + 표준 스키마 변환)"""
+    """공통 티커 메시지 전처리 (projection 필터링 + 표준 스키마 변환 + 심볼 정규화)
+    
+    처리 단계:
+    1. projection 필터링
+    2. 필드명 표준화
+    3. 심볼 정규화 (symbol, quote_currency 추가)
+    """
 
     # 1단계: projection이 지정되면 해당 필드만 추출
     if projection:
@@ -111,6 +118,24 @@ def preprocess_ticker_message(
         else:
             # 매핑되지 않은 필드는 그대로 유지
             standardized_message[original_field] = value
+
+    # 3단계: 심볼 정규화 (symbol, quote_currency 추가)
+    # target_currency, code, s, symbol 등 다양한 필드명에서 심볼 추출
+    symbol_field = (
+        standardized_message.get("target_currency") or 
+        standardized_message.get("code") or 
+        standardized_message.get("s") or
+        standardized_message.get("symbol") or
+        standardized_message.get("market") or
+        standardized_message.get("instId") or
+        standardized_message.get("product_id")
+    )
+    
+    if symbol_field and isinstance(symbol_field, str):
+        base, quote = parse_symbol_pair(symbol_field)
+        standardized_message["symbol"] = base              # "BTC"
+        standardized_message["quote_currency"] = quote     # "KRW", "USDT", "USD" 등
+        # 원본 필드(target_currency 등)는 유지됨
 
     standardized_message["_preprocessed"] = True
     return standardized_message

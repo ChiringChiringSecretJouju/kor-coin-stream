@@ -119,8 +119,6 @@ class BackpressureEventDTO(TimestampedModel):
         "backpressure_activated", "backpressure_deactivated", "queue_status_report"
     ] = Field(..., description="백프레셔 상태 (활성화/비활성화/주기적 리포트)")
     producer_name: str = Field(..., description="Producer 이름 (클래스명)")
-    producer_type: str = Field(
-        default="AsyncProducerBase", description="Producer 타입"
-    )
+    producer_type: str = Field(default="AsyncProducerBase", description="Producer 타입")
     status: BackpressureStatusDTO = Field(..., description="백프레셔 상태 정보")
     message: str | None = Field(None, description="추가 메시지")

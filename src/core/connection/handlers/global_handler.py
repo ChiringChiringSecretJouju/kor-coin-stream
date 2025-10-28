@@ -53,7 +53,7 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             region=region,
             request_type=request_type,
         )
-        
+
         # YAML에서 주입된 heartbeat 설정 적용
         if heartbeat_kind:
             self.set_heartbeat(kind=heartbeat_kind, message=heartbeat_message)
@@ -159,7 +159,7 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             return
         try:
             # 타입별 Producer 초기화 (Avro 지원)
-            self._ticker_producer = TickerDataProducer(use_avro=False)
+            self._ticker_producer = TickerDataProducer(use_avro=True)
             self._orderbook_producer = OrderbookDataProducer(use_avro=False)
             self._trade_producer = TradeDataProducer(use_avro=False)
 
@@ -172,7 +172,7 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             async def emit_batch(batch: list[dict[str, Any]]) -> bool:
                 """배치 전송 콜백 함수 - 타입별 Producer 선택"""
                 request_type = self.scope.request_type
-                
+
                 if request_type == "ticker" and self._ticker_producer:
                     return await self._ticker_producer.send_batch(
                         scope=self.scope, batch=batch
@@ -439,7 +439,7 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         while not self.stop_requested:
             # 처리 시작 시각 기록 (Latency 측정용)
             start_time = time.time()
-            
+
             message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
             # 수신 알림으로 워치독에 최신 수신 시각을 전달
             self._health_monitor.notify_receive()

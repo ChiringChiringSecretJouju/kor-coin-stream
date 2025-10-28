@@ -57,19 +57,21 @@ FIELD_PRIORITIES: Final[tuple[SymbolFieldSpec, ...]] = (
 # ============================================================================
 
 
-def extract_base_currency(symbol: str) -> str:
-    """다양한 거래소 symbol 포맷에서 base currency를 추출합니다.
+def parse_symbol_pair(symbol: str) -> tuple[str, str]:
+    """심볼을 (BASE, QUOTE) 페어로 한 번에 파싱합니다.
     
-    지원 포맷 (알고리즘 최적화됨):
-    - Bitfinex:  "tBTCUSD"              → "BTC"  (접두사 제거)
-    - Kraken:    "BTC/USD"              → "BTC"  (슬래시 분리)
-    - OKX:       "BTC-USDT"             → "BTC"  (하이픈 분리)
-    - Upbit:     "KRW-BTC"              → "BTC"  (Fiat 감지 후 역순)
-    - Coinone:   "btc_krw"              → "BTC"  (언더스코어 분리)
-    - Coinbase:  "BTC-USD"              → "BTC"  (하이픈 분리)
-    - Huobi:     "BTCUSDT"              → "BTC"  (suffix 제거)
-    - Huobi ch:  "market.btcusdt.ticker" → "BTC"  (특수 처리)
-    - Binance:   "ETHBUSD"              → "ETH"  (suffix 제거)
+    기존 extract_base_currency() 로직을 확장하여 QUOTE도 함께 추출합니다.
+    
+    지원 포맷:
+    - Bitfinex:  "tBTCUSD"              → ("BTC", "USD")
+    - Kraken:    "BTC/USD"              → ("BTC", "USD")
+    - OKX:       "BTC-USDT"             → ("BTC", "USDT")
+    - Upbit:     "KRW-BTC"              → ("BTC", "KRW")
+    - Coinone:   "btc_krw"              → ("BTC", "KRW")
+    - Coinbase:  "BTC-USD"              → ("BTC", "USD")
+    - Huobi:     "BTCUSDT"              → ("BTC", "USDT")
+    - Huobi ch:  "market.btcusdt.ticker" → ("BTC", "USDT")
+    - Binance:   "ETHBUSD"              → ("ETH", "BUSD")
     
     성능: O(1) ~ O(k), k는 quote suffix 개수 (최대 20개)
     
@@ -77,10 +79,10 @@ def extract_base_currency(symbol: str) -> str:
         symbol: 거래소 원본 심볼 문자열
         
     Returns:
-        Base currency (대문자)
+        (base, quote) 튜플. 파싱 실패 시 (symbol.upper(), "UNKNOWN")
     """
     if not isinstance(symbol, str) or not symbol:
-        return symbol.upper() if isinstance(symbol, str) else ""
+        return (symbol.upper() if isinstance(symbol, str) else "", "UNKNOWN")
     
     # 0. Huobi 특수 처리: "market.btcusdt.ticker" → "btcusdt"
     if symbol.startswith("market.") and "." in symbol:
@@ -89,27 +91,31 @@ def extract_base_currency(symbol: str) -> str:
             symbol = parts[1]  # "btcusdt" 추출
     
     # 1. Bitfinex 접두사 제거 (O(1))
-    if symbol[0] == "t" and len(symbol) > 1:
+    if symbol and symbol[0] == "t" and len(symbol) > 1:
         symbol = symbol[1:]
     
     # 2. 슬래시 구분 - Kraken (O(1))
     if "/" in symbol:
-        return symbol.split("/", 1)[0].strip().upper()
+        parts = symbol.split("/", 1)
+        return (parts[0].strip().upper(), parts[1].strip().upper())
     
     # 3. 하이픈 구분 - OKX, Coinbase, Upbit (O(1) regex)
     match = _HYPHEN_PATTERN.match(symbol)
     if match:
         left, right = match.groups()
-        # Fiat이 앞에 있으면 뒤쪽이 base (예: KRW-BTC → BTC)
+        # Fiat이 앞에 있으면 역순 (KRW-BTC → BTC, KRW)
         if left.upper() in _FIAT_QUOTES:
             # 뒤쪽에서 알파벳만 추출
             alpha_match = _ALPHA_ONLY_PATTERN.match(right)
-            return alpha_match.group(1).upper() if alpha_match else right.upper()
-        return left.upper()
+            base = alpha_match.group(1).upper() if alpha_match else right.upper()
+            return (base, left.upper())
+        # 일반적인 경우 (BTC-USDT → BTC, USDT)
+        return (left.upper(), right.upper())
     
     # 4. 언더스코어 구분 - Coinone (O(1))
     if "_" in symbol:
-        return symbol.split("_", 1)[0].strip().upper()
+        parts = symbol.split("_", 1)
+        return (parts[0].strip().upper(), parts[1].strip().upper())
     
     # 5. 붙어있는 형태 - Huobi, Binance (O(k), k=20)
     # Quote suffix 제거 (긴 것부터 매칭)
@@ -118,7 +124,7 @@ def extract_base_currency(symbol: str) -> str:
             if symbol.endswith(suffix):
                 base = symbol[: -len(suffix)]
                 if base:  # 빈 문자열 방지
-                    return base
+                    return (base, suffix)
     
     # 6. 소문자 변환 시도 (대소문자 혼합)
     upper_symbol = symbol.upper()
@@ -127,10 +133,63 @@ def extract_base_currency(symbol: str) -> str:
             if upper_symbol.endswith(suffix):
                 base = upper_symbol[: -len(suffix)]
                 if base:
-                    return base
+                    return (base, suffix)
     
-    # 7. 폴백: 전체 대문자 반환
-    return upper_symbol
+    # 7. 폴백: 전체 대문자 반환, QUOTE는 UNKNOWN
+    return (upper_symbol, "UNKNOWN")
+
+
+def extract_base_currency(symbol: str) -> str:
+    """다양한 거래소 symbol 포맷에서 base currency를 추출합니다.
+    
+    Note:
+        parse_symbol_pair()를 사용하여 BASE만 반환합니다.
+        기존 코드와의 하위 호환성을 위해 유지됩니다.
+    
+    지원 포맷:
+    - Bitfinex:  "tBTCUSD"              → "BTC"
+    - Kraken:    "BTC/USD"              → "BTC"
+    - OKX:       "BTC-USDT"             → "BTC"
+    - Upbit:     "KRW-BTC"              → "BTC"
+    - Coinone:   "btc_krw"              → "BTC"
+    - Coinbase:  "BTC-USD"              → "BTC"
+    - Huobi:     "BTCUSDT"              → "BTC"
+    - Huobi ch:  "market.btcusdt.ticker" → "BTC"
+    - Binance:   "ETHBUSD"              → "ETH"
+    
+    Args:
+        symbol: 거래소 원본 심볼 문자열
+        
+    Returns:
+        Base currency (대문자)
+    """
+    base, _ = parse_symbol_pair(symbol)
+    return base
+
+
+def extract_quote_currency(symbol: str) -> str:
+    """다양한 거래소 symbol 포맷에서 quote currency를 추출합니다.
+    
+    Note:
+        parse_symbol_pair()를 사용하여 QUOTE만 반환합니다.
+    
+    지원 포맷:
+    - Upbit:     "KRW-BTC"              → "KRW"
+    - OKX:       "BTC-USDT"             → "USDT"
+    - Coinbase:  "BTC-USD"              → "USD"
+    - Huobi:     "BTCUSDT"              → "USDT"
+    - Binance:   "ETHBUSD"              → "BUSD"
+    - Kraken:    "BTC/USD"              → "USD"
+    - Coinone:   "btc_krw"              → "KRW"
+    
+    Args:
+        symbol: 거래소 원본 심볼 문자열
+        
+    Returns:
+        Quote currency (대문자), 추출 실패 시 "UNKNOWN"
+    """
+    _, quote = parse_symbol_pair(symbol)
+    return quote
 
 
 def format_counter_key(base_currency: str | None) -> str | None:

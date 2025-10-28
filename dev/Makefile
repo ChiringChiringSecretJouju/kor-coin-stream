@@ -146,7 +146,7 @@ na-ticker: ## 북미 거래소 ticker 연결
 	@wait
 
 na-orderbook: ## 북미 거래소 orderbook 연결
-	@$(MAKE) coinbase-orderbook &
+#	@$(MAKE) coinbase-orderbook &
 	@$(MAKE) kraken-orderbook &
 	@wait
 
@@ -585,14 +585,14 @@ coinbase-ticker: ## Coinbase ticker 연결
 		--request-type ticker \
 		--subscribe-type ticker
 
-coinbase-orderbook: ## Coinbase orderbook 연결
-	@echo "$(YELLOW)📈 Coinbase orderbook 연결 중...$(NC)"
-	@$(PYTHON) producer_main.py \
-		--exchange coinbase \
-		--symbols $(SYMBOLS) \
-		--region na \
-		--request-type orderbook \
-		--subscribe-type orderbook
+# coinbase-orderbook: ## Coinbase orderbook 연결
+# 	@echo "$(YELLOW)📈 Coinbase orderbook 연결 중...$(NC)"
+# 	@$(PYTHON) producer_main.py \
+# 		--exchange coinbase \
+# 		--symbols $(SYMBOLS) \
+# 		--region na \
+# 		--request-type orderbook \
+# 		--subscribe-type orderbook
 
 coinbase-trade: ## Coinbase trade 연결
 	@echo "$(YELLOW)💰 Coinbase trade 연결 중...$(NC)"

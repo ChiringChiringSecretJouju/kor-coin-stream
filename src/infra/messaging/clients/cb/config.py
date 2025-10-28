@@ -26,25 +26,22 @@ def producer_config(**overrides: Any) -> dict:
     # confluent-kafka 형식으로 변환 (점 표기법 사용)
     cfg = {
         # 필수
-        "bootstrap.servers": kafka_settings.bootstrap_servers,
-        # 보안(예시: SASL/SCRAM). mTLS면 security.protocol/ssl.*로 교체
-        # "security.protocol": "SASL_SSL",
-        # "sasl.mechanisms": "SCRAM-SHA-512",
-        # "sasl.username": "<user>",
-        # "sasl.password": "<pass>",
-        # 안정성: Idempotent + acks=all (+ in-flight ≤5, retries>0)
-        "enable.idempotence": True,  # EOS 아님, 중복 없는 producer 보장.
-        "acks": "all",  # idempotence 요구조건에 포함.
-        "max.in.flight.requests.per.connection": 5,  # ≤5 권장. 별칭 'max.in.flight'도 가능.
-        # 재시도/타임아웃
-        "retries": 1000000,  # 재시도는 크게
-        "request.timeout.ms": 30000,
-        "delivery.timeout.ms": 120000,  # 전체 전송 마감시간.
-        # 처리량·지연 균형(배칭)
-        "linger.ms": 30,  # queue.buffering.max.ms의 현대식 별칭.
-        "batch.size": 331072,  # (신규 지원) 배치 바이트 상한.
-        # 압축
-        "compression.type": "lz4",
+        "bootstrap.servers": "kafka1:19092,kafka2:29092,kafka3:39092",
+        # 안정성: Idempotent + acks=all
+        "enable.idempotence": True,
+        "acks": "all",
+        "max.in.flight.requests.per.connection": 5,
+        # 타임아웃 설정
+        "delivery.timeout.ms": 300000,  # ✅ 총 전달 타임아웃 (5분)
+        "request.timeout.ms": 60000,  # ✅ 개별 요청 타임아웃
+        "retry.backoff.ms": 500,  # ✅ 재시도 간격
+        # 연결 안정성
+        "socket.keepalive.enable": True,  # ✅ TCP keepalive
+        # 배치 튜닝 (처리량 vs 지연 균형)
+        "linger.ms": 5,  # ✅ 배치 대기 시간 (낮음 = 저지연)
+        "batch.size": 65536,  # ✅ 64KB (기본값 16KB보다 큼)
+        # 압축 (선택)
+        "compression.type": "lz4",  # 권장: lz4 또는 zstd
     }
 
     cfg.update(overrides)  # 사용자 지정 값으로 덮어쓰기

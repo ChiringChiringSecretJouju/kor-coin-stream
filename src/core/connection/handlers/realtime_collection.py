@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import deque
+from collections import defaultdict, deque
 from typing import Any, Awaitable, Callable, Literal, TypeAlias
 
 from src.common.logger import PipelineLogger
@@ -23,6 +23,7 @@ MemoryStorage: TypeAlias = dict[MessageType, deque[BatchData]]
 # 상수 정의
 MESSAGE_TYPES: tuple[MessageType, ...] = ("ticker", "orderbook", "trade")
 ERROR_RETRY_DELAY: float = 1.0
+DEFAULT_SYMBOL_KEY: str = "UNKNOWN"  # 심볼 추출 실패 시 기본값
 
 
 class RealtimeBatchCollector:
@@ -69,6 +70,48 @@ class RealtimeBatchCollector:
         self._last_flush_time = current_time
         self._flush_timer: asyncio.Task | None = None
         self._is_running = False
+
+    @staticmethod
+    def _extract_symbol_from_message(data: dict[str, Any]) -> str:
+        """메시지에서 심볼 추출 (플러시 시 그룹화용)
+
+        우선순위:
+        1. target_currency (표준 필드)
+        2. symbol (일반적인 필드)
+        3. code (업비트 등)
+        4. market (빗썸 등)
+        5. s (바이낸스 등)
+        6. instId (OKX 등)
+        7. product_id (Coinbase 등)
+
+        Args:
+            data: 메시지 데이터
+
+        Returns:
+            추출된 심볼 또는 DEFAULT_SYMBOL_KEY
+        """
+        # 표준 필드 우선
+        if symbol := data.get("target_currency"):
+            return str(symbol).upper()
+
+        # 거래소별 필드 확인
+        for key in ["symbol", "code", "market", "s", "instId", "product_id"]:
+            if symbol := data.get(key):
+                # 코인만 추출 (예: KRW-BTC → BTC, BTCUSDT → BTC)
+                symbol_str = str(symbol).upper()
+
+                # 하이픈 구분 (KRW-BTC)
+                if "-" in symbol_str:
+                    return symbol_str.split("-")[-1]
+
+                # USDT 등 제거 (BTCUSDT → BTC)
+                for suffix in ["USDT", "BUSD", "USDC", "BTC", "ETH", "KRW"]:
+                    if symbol_str.endswith(suffix) and len(symbol_str) > len(suffix):
+                        return symbol_str[: -len(suffix)]
+
+                return symbol_str
+
+        return DEFAULT_SYMBOL_KEY
 
     async def start(self) -> None:
         """컬렉터 시작 및 백그라운드 타이머 실행"""
@@ -148,7 +191,21 @@ class RealtimeBatchCollector:
                 await asyncio.sleep(ERROR_RETRY_DELAY)
 
     async def _flush_single_batch(self, message_type: str) -> None:
-        """단일 타입 배치 플러시 (성능 최적화: 참조 교체)"""
+        """단일 타입 배치 플러시 (심볼별 그룹화 후 전송)
+
+        핵심 개선:
+        - 수집: 타입별로 묶어서 효율적 (기존 유지)
+        - 전송: 심볼별로 그룹화해서 분리 전송 (신규)
+
+        예시:
+            배치: [BTC, ETH, BTC, XRP, BTC, ETH]
+            ↓ 그룹화
+            BTC: [msg1, msg3, msg5]
+            ETH: [msg2, msg6]
+            XRP: [msg4]
+            ↓ 각각 개별 전송
+            send(BTC 배치), send(ETH 배치), send(XRP 배치)
+        """
         if message_type not in self._batches:
             return
 
@@ -158,7 +215,28 @@ class RealtimeBatchCollector:
 
         # 참조 교체로 copy() 오버헤드 제거
         self._batches[message_type] = deque(maxlen=self.max_batch_size)
-        await self.emit_factory(batch)
+
+        # 심볼별로 그룹화 (같은 심볼끼리 묶음) - defaultdict로 간결화
+        symbol_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for message in batch:
+            if not isinstance(message, dict):
+                continue
+
+            symbol = self._extract_symbol_from_message(message)
+            symbol_groups[symbol].append(message)
+
+        # 심볼별로 개별 전송
+        for symbol, messages in symbol_groups.items():
+            try:
+                await self.emit_factory(messages)
+                logger.debug(
+                    f"Flushed {len(messages)} {message_type} messages for symbol={symbol}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to flush {message_type} batch for symbol={symbol}: {e}",
+                    exc_info=True,
+                )
 
     async def _flush_batches(self, force: bool = False) -> None:
         """모든 배치 플러시"""

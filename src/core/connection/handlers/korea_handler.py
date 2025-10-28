@@ -159,7 +159,7 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
         try:
             # 타입별 Producer 초기화 (Avro 지원)
-            self._ticker_producer = TickerDataProducer(use_avro=False)
+            self._ticker_producer = TickerDataProducer(use_avro=True)
             self._orderbook_producer = OrderbookDataProducer(use_avro=False)
             self._trade_producer = TradeDataProducer(use_avro=False)
 
@@ -172,7 +172,7 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             async def emit_batch(batch: list[dict[str, Any]]) -> bool:
                 """배치 전송 콜백 함수 - 타입별 Producer 선택"""
                 request_type = self.scope.request_type
-                
+
                 if request_type == "ticker" and self._ticker_producer:
                     return await self._ticker_producer.send_batch(
                         scope=self.scope, batch=batch
@@ -264,19 +264,30 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
             # 구독 확인 메시지 처리 (일부 거래소에서 사용)
             rt = parsed_message.get("response_type", "")
-            logger.debug(f"{self.scope.exchange}: response_type={rt}")
 
-            if rt == "SUBSCRIBED":
-                self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
-                )
-                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-                await self._emit_connect_success_ack()
-                return None
-            if rt == "CONNECTED":
-                logger.debug(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
-                return None
+            # response_type이 존재하는 경우 - DATA가 아닌 모든 응답 메시지는 필터링
+            if rt:
+                logger.debug(f"{self.scope.exchange}: response_type={rt}")
+
+                if rt != "DATA":
+                    # SUBSCRIBED, CONNECTED, PING 등 non-data 메시지 처리
+                    if rt == "SUBSCRIBED":
+                        self._log_status("subscribed")
+                        logger.info(
+                            f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
+                        )
+                        # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
+                        await self._emit_connect_success_ack()
+                    elif rt == "CONNECTED":
+                        logger.debug(
+                            f"{self.scope.exchange}: Connection confirmed (CONNECTED)"
+                        )
+                    else:
+                        # 알려지지 않은 응답 타입 (PING, PONG 등)
+                        logger.debug(
+                            f"{self.scope.exchange}: Skipping non-data response: {rt}"
+                        )
+                    return None
 
             # data 필드 병합 (중첩 구조 처리)
             data_sub: dict | None = parsed_message.get("data", None)
@@ -330,20 +341,30 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
             # 구독 확인 메시지 처리 (일부 거래소에서 사용)
             rt = parsed_message.get("response_type", "")
-            logger.debug(f"{self.scope.exchange}: response_type={rt}")
 
-            if rt == "SUBSCRIBED":
-                self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
-                )
-                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-                await self._emit_connect_success_ack()
-                return None
-            if rt == "CONNECTED":
-                # Coinone 연결 확인 메시지 - orderbook으로 전달하지 않음
-                logger.info(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
-                return None
+            # response_type이 존재하는 경우 - DATA가 아닌 모든 응답 메시지는 필터링
+            if rt:
+                logger.debug(f"{self.scope.exchange}: response_type={rt}")
+
+                if rt != "DATA":
+                    # SUBSCRIBED, CONNECTED, PING 등 non-data 메시지 처리
+                    if rt == "SUBSCRIBED":
+                        self._log_status("subscribed")
+                        logger.info(
+                            f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
+                        )
+                        # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
+                        await self._emit_connect_success_ack()
+                    elif rt == "CONNECTED":
+                        logger.debug(
+                            f"{self.scope.exchange}: Connection confirmed (CONNECTED)"
+                        )
+                    else:
+                        # 알려지지 않은 응답 타입 (PING, PONG 등)
+                        logger.debug(
+                            f"{self.scope.exchange}: Skipping non-data response: {rt}"
+                        )
+                    return None
 
             # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
             data_sub: dict | None = parsed_message.get("data", None)
@@ -398,19 +419,30 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
             # 구독 확인 메시지 처리 (일부 거래소에서 사용)
             rt = parsed_message.get("response_type", "")
-            logger.debug(f"{self.scope.exchange}: response_type={rt}")
 
-            if rt == "SUBSCRIBED":
-                self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
-                )
-                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-                await self._emit_connect_success_ack()
-                return None
-            if rt == "CONNECTED":
-                logger.debug(f"{self.scope.exchange}: Connection confirmed (CONNECTED)")
-                return None
+            # response_type이 존재하는 경우 - DATA가 아닌 모든 응답 메시지는 필터링
+            if rt:
+                logger.debug(f"{self.scope.exchange}: response_type={rt}")
+
+                if rt != "DATA":
+                    # SUBSCRIBED, CONNECTED, PING 등 non-data 메시지 처리
+                    if rt == "SUBSCRIBED":
+                        self._log_status("subscribed")
+                        logger.info(
+                            f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
+                        )
+                        # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
+                        await self._emit_connect_success_ack()
+                    elif rt == "CONNECTED":
+                        logger.debug(
+                            f"{self.scope.exchange}: Connection confirmed (CONNECTED)"
+                        )
+                    else:
+                        # 알려지지 않은 응답 타입 (PING, PONG 등)
+                        logger.debug(
+                            f"{self.scope.exchange}: Skipping non-data response: {rt}"
+                        )
+                    return None
 
             # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
             data_sub: dict | None = parsed_message.get("data", None)
@@ -446,7 +478,7 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
         while not self.stop_requested:
             # 처리 시작 시각 기록 (Latency 측정용)
             start_time = time.time()
-            
+
             message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
             # 수신 알림으로 워치독에 최신 수신 시각을 전달
             self._health_monitor.notify_receive()

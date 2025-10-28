@@ -1,5 +1,5 @@
 """
-Redis 기반 분산 서킷브레이커 구현
+Redis 기반 분산 서킷브레이커 구현 (Sliding Window 패턴)
 
 3-State Finite State Machine:
 - CLOSED: 정상 동작 (요청 허용)
@@ -7,10 +7,23 @@ Redis 기반 분산 서킷브레이커 구현
 - HALF_OPEN: 회복 테스트 (제한된 요청만 허용)
 
 특징:
-- Redis를 통한 분산 환경 상태 공유
-- 시간 기반 자동 복구 (OPEN → HALF_OPEN)
-- 슬라이딩 윈도우 기반 장애 감지
+- Redis Sorted Set 기반 슬라이딩 윈도우 구현
+- 시간 기반 실패 추적 (기본 5분 윈도우)
+- 분산 환경 상태 공유 (여러 인스턴스에서 일관성 보장)
+- 자동 복구 (OPEN → HALF_OPEN → CLOSED)
 - TTL 기반 자동 상태 만료
+- 오래된 실패 자동 제거 (윈도우 밖 데이터)
+
+슬라이딩 윈도우 동작 원리:
+1. 실패 발생 시 타임스탬프와 함께 Redis Sorted Set에 기록
+2. 매 실패마다 윈도우(기본 5분) 밖 오래된 실패 자동 제거
+3. 윈도우 내 실패만 카운트하여 임계값 체크
+4. 성공 시에도 오래된 실패 정리하여 메모리 효율성 유지
+
+예시:
+- 10:00 실패 → count=1
+- 10:02 실패 → count=2
+- 10:06 실패 → 10:00 실패 제거(윈도우 밖), count=2
 """
 
 from __future__ import annotations
@@ -75,6 +88,7 @@ class RedisCircuitBreaker:
 
     KEY_PREFIX: Final[str] = "cb"  # Circuit Breaker
     STATE_TTL: Final[int] = 3600  # 1시간 (상태 자동 만료)
+    FAILURE_WINDOW_SUFFIX: Final[str] = ":failures"  # 슬라이딩 윈도우용 Sorted Set
 
     def __init__(
         self,
@@ -92,6 +106,7 @@ class RedisCircuitBreaker:
         self.config = config or CircuitBreakerConfig()
         self._redis: Redis | None = redis_client
         self._redis_key = f"{self.KEY_PREFIX}:{resource_key}"
+        self._failure_window_key = f"{self._redis_key}{self.FAILURE_WINDOW_SUFFIX}"
 
     async def start(self) -> None:
         """Redis 클라이언트 초기화 (RedisConnectionManager 사용)"""
@@ -158,7 +173,7 @@ class RedisCircuitBreaker:
         return False
 
     async def record_failure(self) -> None:
-        """실패 기록 및 상태 전환 체크"""
+        """실패 기록 및 상태 전환 체크 (슬라이딩 윈도우 기반)"""
         state_data = await self._get_state()
         current_state = state_data["state"]
 
@@ -175,26 +190,47 @@ class RedisCircuitBreaker:
             )
             return
 
-        # CLOSED 상태: 실패 카운트 증가
-        new_count = state_data["failure_count"] + 1
-        await self._set_failure_count(new_count)
+        # CLOSED 상태: 슬라이딩 윈도우 기반 실패 기록
+        if not self._redis:
+            await self.start()
 
-        # 임계값 초과 시 OPEN으로 전환
-        if new_count >= self.config.failure_threshold:
+        current_time = time.time()
+        
+        # 1. 현재 실패를 Sorted Set에 추가 (score=timestamp, member=timestamp)
+        await self._redis.zadd(  # type: ignore
+            self._failure_window_key,
+            {str(current_time): current_time}
+        )
+        
+        # 2. 윈도우 밖 오래된 실패 제거
+        await self._cleanup_old_failures()
+        
+        # 3. 윈도우 내 실패 카운트 조회
+        failure_count = await self._get_failure_count_in_window()
+        
+        # 4. TTL 설정 (윈도우 크기 + 버퍼 60초)
+        await self._redis.expire(  # type: ignore
+            self._failure_window_key,
+            self.config.sliding_window_seconds + 60
+        )
+        
+        # 5. 임계값 초과 시 OPEN으로 전환
+        if failure_count >= self.config.failure_threshold:
             await self._transition_to_open()
             logger.error(
                 f"Circuit {self.resource_key}: CLOSED → OPEN "
-                f"(failures: {new_count}/{self.config.failure_threshold})"
+                f"(failures: {failure_count}/{self.config.failure_threshold} "
+                f"in {self.config.sliding_window_seconds}s window)"
             )
 
     async def record_success(self) -> None:
-        """성공 기록 및 상태 전환 체크"""
+        """성공 기록 및 상태 전환 체크 (슬라이딩 윈도우 기반)"""
         state_data = await self._get_state()
         current_state = state_data["state"]
 
         if current_state == CircuitState.CLOSED:
-            # CLOSED 상태에서 성공 → 실패 카운트 리셋
-            await self._reset_failure_count()
+            # CLOSED 상태에서 성공 → 오래된 실패만 정리 (윈도우 밖)
+            await self._cleanup_old_failures()
             return
 
         if current_state == CircuitState.HALF_OPEN:
@@ -202,9 +238,12 @@ class RedisCircuitBreaker:
             new_success_count = state_data["success_count"] + 1
             await self._increment_success_count()
 
-            # 성공 임계값 도달 → CLOSED로 전환
+            # 성공 임계값 도달 → CLOSED로 전환 및 윈도우 초기화
             if new_success_count >= self.config.success_threshold:
                 await self._transition_to_closed()
+                # 슬라이딩 윈도우 초기화 (정상 복구)
+                if self._redis:
+                    await self._redis.delete(self._failure_window_key)  # type: ignore
                 logger.info(
                     f"Circuit {self.resource_key}: HALF_OPEN → CLOSED "
                     f"(successes: {new_success_count}/{self.config.success_threshold})"
@@ -238,7 +277,6 @@ class RedisCircuitBreaker:
             # 상태 없음 → CLOSED로 초기화
             return {
                 "state": CircuitState.CLOSED,
-                "failure_count": 0,
                 "success_count": 0,
                 "opened_at": 0.0,
                 "half_open_calls": 0,
@@ -260,7 +298,6 @@ class RedisCircuitBreaker:
         await self._set_state(
             {
                 "state": CircuitState.OPEN,
-                "failure_count": 0,
                 "success_count": 0,
                 "opened_at": time.time(),
                 "half_open_calls": 0,
@@ -272,7 +309,6 @@ class RedisCircuitBreaker:
         await self._set_state(
             {
                 "state": CircuitState.HALF_OPEN,
-                "failure_count": 0,
                 "success_count": 0,
                 "opened_at": 0.0,
                 "half_open_calls": 0,
@@ -284,22 +320,48 @@ class RedisCircuitBreaker:
         await self._set_state(
             {
                 "state": CircuitState.CLOSED,
-                "failure_count": 0,
                 "success_count": 0,
                 "opened_at": 0.0,
                 "half_open_calls": 0,
             }
         )
 
-    async def _set_failure_count(self, count: int) -> None:
-        """실패 카운트 설정"""
-        state_data = await self._get_state()
-        state_data["failure_count"] = count
-        await self._set_state(state_data)
-
-    async def _reset_failure_count(self) -> None:
-        """실패 카운트 리셋"""
-        await self._set_failure_count(0)
+    async def _get_failure_count_in_window(self) -> int:
+        """슬라이딩 윈도우 내 실패 카운트 조회
+        
+        Returns:
+            윈도우 내 실패 횟수
+        """
+        if not self._redis:
+            await self.start()
+        
+        # Sorted Set의 전체 카운트 반환 (이미 정리된 상태)
+        count = await self._redis.zcard(self._failure_window_key)  # type: ignore
+        return count or 0
+    
+    async def _cleanup_old_failures(self) -> None:
+        """윈도우 밖 오래된 실패 제거
+        
+        현재 시간 기준 sliding_window_seconds 이전 실패 제거
+        """
+        if not self._redis:
+            await self.start()
+        
+        current_time = time.time()
+        window_start = current_time - self.config.sliding_window_seconds
+        
+        # score가 window_start보다 작은 (오래된) 항목 제거
+        removed = await self._redis.zremrangebyscore(  # type: ignore
+            self._failure_window_key,
+            0,
+            window_start
+        )
+        
+        if removed > 0:
+            logger.debug(
+                f"Circuit {self.resource_key}: Removed {removed} old failures "
+                f"(older than {self.config.sliding_window_seconds}s)"
+            )
 
     async def _increment_success_count(self) -> None:
         """성공 카운트 증가 (HALF_OPEN 상태용)"""

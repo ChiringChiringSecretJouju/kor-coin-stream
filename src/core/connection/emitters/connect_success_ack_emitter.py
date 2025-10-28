@@ -56,7 +56,7 @@ class ConnectSuccessAckEmitter:
         producer: ConnectSuccessEventProducer | None = None,
     ) -> None:
         self.scope = scope
-        self._producer = producer or ConnectSuccessEventProducer()
+        self._producer = producer or ConnectSuccessEventProducer(use_avro=True)
         self._target = ConnectionTargetDTO(
             exchange=self.scope.exchange,
             region=self.scope.region,

@@ -272,10 +272,10 @@ async def flush_loop():
 
 ### 4. **CircuitBreaker** (exceptions/circuit_breaker.py)
 
-#### 분산 Circuit Breaker
+#### 분산 Circuit Breaker (Sliding Window 패턴)
 
 ```python
-class CircuitBreaker:
+class RedisCircuitBreaker:
     """
     Redis 기반 분산 Circuit Breaker
     
@@ -285,55 +285,104 @@ class CircuitBreaker:
     - HALF_OPEN: 복구 시도
     
     특징:
-    - Redis 기반 분산 상태 관리
-    - 슬라이딩 윈도우
-    - 자동 복구 시도
+    - Redis Sorted Set 기반 슬라이딩 윈도우
+    - 시간 기반 실패 추적 (기본 5분)
+    - 분산 환경 상태 공유
+    - 자동 복구 (OPEN → HALF_OPEN → CLOSED)
+    - 오래된 실패 자동 제거
     """
-    
-    async def call(self, func: Callable, *args, **kwargs):
-        """Circuit Breaker를 통한 호출"""
 ```
+
+#### 슬라이딩 윈도우 동작 원리
+
+```
+타임라인:
+10:00  실패 기록 (count=1)
+10:02  실패 기록 (count=2)
+10:04  실패 기록 (count=3)
+10:06  실패 기록
+       └─ 10:00 실패 제거 (5분 윈도우 밖)
+       └─ count=3 (최근 5분 내 실패만 카운트)
+```
+
+**Redis Sorted Set 활용:**
+- Score: 실패 발생 타임스탬프
+- Member: 실패 ID (타임스탬프 문자열)
+- ZREMRANGEBYSCORE로 윈도우 밖 데이터 자동 제거
+- ZCARD로 윈도우 내 실패 카운트 조회
 
 #### 상태 전이
 
 ```
 CLOSED (정상)
-  ↓ (실패율 > threshold)
+  ↓ (윈도우 내 실패 ≥ threshold)
 OPEN (차단)
   ↓ (timeout 후)
 HALF_OPEN (복구 시도)
-  ├─ 성공 → CLOSED
-  └─ 실패 → OPEN
+  ├─ 성공 × 2회 → CLOSED (윈도우 초기화)
+  └─ 실패 × 1회 → OPEN
 ```
 
 #### 사용 예시
 
 ```python
-# 1. Circuit Breaker 생성
-cb = CircuitBreaker(
-    name="kafka-producer",
-    redis_client=redis_client,
-    failure_threshold=5,      # 5회 연속 실패 시 OPEN
-    timeout=60,               # 60초 후 HALF_OPEN
-    window_size=300           # 5분 윈도우
+from src.common.exceptions.circuit_breaker import (
+    create_circuit_breaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError
 )
 
-# 2. 보호된 호출
+# 1. Circuit Breaker 생성 (설정 커스터마이징)
+config = CircuitBreakerConfig(
+    failure_threshold=5,           # 5회 실패 시 OPEN
+    success_threshold=2,            # 2회 성공 시 CLOSED
+    timeout_seconds=60,             # 60초 후 HALF_OPEN
+    half_open_max_calls=3,          # HALF_OPEN 상태 최대 호출 수
+    sliding_window_seconds=300      # 5분 슬라이딩 윈도우
+)
+
+breaker = await create_circuit_breaker(
+    resource_key="upbit/kr/ticker",
+    config=config
+)
+
+# 2. 요청 전 체크
+if not await breaker.is_request_allowed():
+    raise CircuitBreakerOpenError("Circuit is OPEN")
+
+# 3. 보호된 호출
 try:
-    result = await cb.call(
-        kafka_producer.send,
-        topic="test",
-        message=data
-    )
-except CircuitBreakerOpenError:
-    logger.warning("Circuit Breaker OPEN - fail-fast")
-    # 폴백 로직
+    result = await some_operation()
+    await breaker.record_success()  # 성공 기록
+except Exception as e:
+    await breaker.record_failure()  # 실패 기록 (자동 상태 전환)
+    raise
+```
+
+**ErrorDispatcher 통합 사용:**
+```python
+from src.common.exceptions.error_dispatcher import ErrorDispatcher
+
+dispatcher = ErrorDispatcher()
+
+# 자동 Circuit Breaker 처리
+try:
+    if not await dispatcher.is_request_allowed(target):
+        raise CircuitBreakerOpenError("Circuit is OPEN")
+    
+    result = await some_operation()
+    await dispatcher.record_success(target)
+except Exception as e:
+    # dispatch 내부에서 Circuit Breaker 자동 처리
+    await dispatcher.dispatch(e, "operation", target)
 ```
 
 **장점:**
-- 장애 격리 (fail-fast)
-- 시스템 과부하 방지
-- 자동 복구
+- **정확한 장애 감지**: 시간 기반 윈도우로 오래된 실패 무시
+- **분산 환경 지원**: Redis 기반 상태 공유
+- **자동 복구**: 시간 경과 후 자동 재시도
+- **메모리 효율**: TTL 및 자동 정리로 메모리 누수 방지
+- **fail-fast**: OPEN 상태에서 즉시 요청 차단
 
 ### 5. **ErrorDispatcher** (exceptions/error_dispatcher.py)
 
