@@ -45,6 +45,7 @@ class ErrorCoordinator:
         error: BaseException,
         phase: str,
         additional_context: dict | None = None,
+        correlation_id: str | None = None,
     ) -> bool:
         """연결 관련 에러 발행
 
@@ -74,6 +75,7 @@ class ErrorCoordinator:
                 target=target,
                 context=raw_context,
                 producer=self._error_producer,
+                correlation_id=correlation_id,
             )
             return True
         except Exception as dispatch_error:
@@ -88,6 +90,7 @@ class ErrorCoordinator:
         scope: ConnectionScopeDomain,
         error: BaseException,
         socket_params: object,
+        correlation_id: str | None = None,
     ) -> bool:
         """재구독 관련 에러 발행
 
@@ -120,6 +123,7 @@ class ErrorCoordinator:
                 target=target,
                 context=raw_context,
                 producer=self._error_producer,
+                correlation_id=correlation_id,
             )
             return True
         except Exception as dispatch_error:
@@ -135,6 +139,7 @@ class ErrorCoordinator:
         error: BaseException,
         operation: str,
         additional_context: dict | None = None,
+        correlation_id: str | None = None,
     ) -> bool:
         """오케스트레이터 관련 에러 발행
 
@@ -143,6 +148,7 @@ class ErrorCoordinator:
             error: 예외 객체
             operation: 수행 중이던 작업 (예: "connect", "disconnect", "shutdown")
             additional_context: 추가 컨텍스트 정보
+            correlation_id: 상관관계 ID
 
         Returns:
             발행 성공 여부
@@ -168,6 +174,7 @@ class ErrorCoordinator:
                 target=target,
                 context=raw_context,
                 producer=self._error_producer,
+                correlation_id=correlation_id,
             )
             return True
         except Exception as dispatch_error:

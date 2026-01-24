@@ -32,12 +32,14 @@ class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
         self._buffer_lock = asyncio.Lock()
 
     @override
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
         # orderbook 버퍼 플러시 태스크 시작 (5초마다)
         asyncio.create_task(self._flush_orderbook_buffer_periodically())
-        await super().websocket_connection(url, parameter_info)
+        await super().websocket_connection(url, parameter_info, correlation_id)
 
     async def _flush_orderbook_buffer_periodically(self) -> None:
         """주기적으로 orderbook 버퍼를 플러시 (5초마다)"""
@@ -187,12 +189,14 @@ class KrakenWebsocketHandler(BaseGlobalWebsocketHandler):
         self._buffer_lock = asyncio.Lock()
 
     @override
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
         # orderbook 버퍼 플러시 태스크 시작 (5초마다)
         asyncio.create_task(self._flush_orderbook_buffer_periodically())
-        await super().websocket_connection(url, parameter_info)
+        await super().websocket_connection(url, parameter_info, correlation_id)
 
     async def _flush_orderbook_buffer_periodically(self) -> None:
         """주기적으로 orderbook 버퍼를 플러시 (5초마다)"""

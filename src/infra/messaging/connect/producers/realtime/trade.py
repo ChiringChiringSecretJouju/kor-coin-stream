@@ -72,7 +72,17 @@ class TradeDataProducer(AvroProducer):
         """
         topic = f"trade-data.{scope.region}"
         if key is None:
-            key = f"{scope.exchange}:{scope.region}:trade"
+            # 배치 내 첫 번째 메시지에서 심볼 추출하여 Kafka Key로 사용 (순서 보장)
+            if batch and isinstance(batch[0], dict):
+                first_msg = batch[0]
+                # Trade DTO는 'code' (예: KRW-BTC) 필드를 가짐
+                symbol = first_msg.get("code") or first_msg.get("symbol")
+                if symbol:
+                    key = str(symbol).upper()
+
+            # 실패 시 폴백
+            if key is None:
+                key = f"{scope.exchange}:{scope.region}:trade"
         
         message = self._convert_to_dto(scope, batch)
         return await self.produce_sending(

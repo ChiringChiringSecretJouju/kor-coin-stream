@@ -28,6 +28,7 @@ class ErrorEvent:
     kind: str  # "avro_deserialization", "kafka_consumer", "ws", etc.
     target: ConnectionTargetDTO
     context: dict[str, Any] | None = None
+    correlation_id: str | None = None
     timestamp: datetime = field(default_factory=datetime.now)
 
 

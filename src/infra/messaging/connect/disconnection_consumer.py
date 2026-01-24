@@ -94,6 +94,7 @@ class KafkaDisconnectionConsumerClient:
                 disconnected = await self.orchestrator.disconnect(
                     target=target,
                     reason=dto.reason,
+                    correlation_id=dto.correlation_id,
                 )
 
                 if not disconnected:

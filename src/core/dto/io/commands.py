@@ -117,7 +117,9 @@ class CommandDTO(BaseIOModelDTO):
     ts_issue: int | None = Field(None, description="발행 타임스탬프")
     ts_ingest: int | None = Field(None, description="수신 타임스탬프")
     timestamp: str | None = Field(None, description="타임스탬프 (ISO 8601)")
-    correlation_id: str | None = Field(None, description="상관관계 ID")
+    correlation_id: str | None = Field(
+        None, description="상관관계 ID", validation_alias="ticket_id"
+    )
 
 
 class DisconnectCommandDTO(BaseIOModelDTO):

@@ -25,10 +25,12 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
         # heartbeat는 DI Container에서 주입됨
 
     @override
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
-        await super().websocket_connection(url, parameter_info)
+        await super().websocket_connection(url, parameter_info, correlation_id)
 
     @override
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
@@ -110,10 +112,12 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
         # heartbeat는 DI Container에서 주입됨
 
     @override
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
-        await super().websocket_connection(url, parameter_info)
+        await super().websocket_connection(url, parameter_info, correlation_id)
 
     @override
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
@@ -205,10 +209,12 @@ class HuobiWebsocketHandler(BaseGlobalWebsocketHandler):
         # heartbeat는 DI Container에서 주입됨
 
     @override
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
-        await super().websocket_connection(url, parameter_info)
+        await super().websocket_connection(url, parameter_info, correlation_id)
 
     @override
     def _parse_message(self, message: str | bytes) -> dict[str, Any]:
@@ -374,10 +380,12 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
         # heartbeat는 DI Container에서 주입됨
 
     @override
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
-        await super().websocket_connection(url, parameter_info)
+        await super().websocket_connection(url, parameter_info, correlation_id)
 
     @override
     async def ticker_message(self, message: Any) -> TickerResponseData | None:

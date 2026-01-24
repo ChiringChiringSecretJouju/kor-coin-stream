@@ -34,11 +34,13 @@ def _make_json_serializable(obj: Any) -> Any:
             return obj
 
 
-def build_error_meta(observed_key: str, raw_context: dict) -> WsEventErrorMetaDTO:
+def build_error_meta(
+    observed_key: str, raw_context: dict, correlation_id: str | None = None
+) -> WsEventErrorMetaDTO:
     """에러 메타데이터 DTO 생성"""
     return WsEventErrorMetaDTO(
         schema_version=DEFAULT_SCHEMA_VERSION,
-        correlation_id=uuid.uuid4().hex,
+        correlation_id=correlation_id or uuid.uuid4().hex,
         observed_key=observed_key,
         raw_context=raw_context,
     )
@@ -64,16 +66,17 @@ async def make_ws_error_event_from_kind(
     kind: str,
     observed_key: str = "",
     raw_context: dict | None = None,
+    correlation_id: str | None = None,
 ) -> bool:
     """규칙 기반 분류(classify_exception)로 DTO를 만들고, ErrorEventProducer로 전송합니다.
-
+ 
     - error_message에는 err 문자열을 담습니다.
     - observed_key/raw_context는 호출자가 넘겨준 값을 그대로 사용(필수는 아님)
     - 성공 시 True 반환
-
+ 
     Note: Producer가 None이면 내부에서 생성하지 않습니다.
           error_dispatcher에서 생성해서 전달해야 합니다.
-
+ 
     Args:
         target: ConnectionTargetDTO
         producer: ErrorEventProducer (순환 참조로 인해 Any 사용)
@@ -81,12 +84,14 @@ async def make_ws_error_event_from_kind(
         kind: str
         observed_key: str
         raw_context: dict | None
+        correlation_id: str | None
     """
-
+ 
     domain, code, _retryable = classify_exception(err, kind)
     meta: WsEventErrorMetaDTO = build_error_meta(
         observed_key=observed_key,
         raw_context=_make_json_serializable(raw_context or {}),
+        correlation_id=correlation_id,
     )
     etype: WsEventErrorTypeDTO = build_error_type(
         error_message={

@@ -28,3 +28,4 @@ class StreamContextDomain:
     url: str | None = None
     symbols: tuple[str, ...] = ()
     projection: list[str] | None = None
+    correlation_id: str | None = None

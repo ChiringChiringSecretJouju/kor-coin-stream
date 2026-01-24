@@ -187,11 +187,11 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
                     )
                 return False
 
-            # 글로벌 거래소 특화 배치 설정 (안정적 전송)
+            # 글로벌 거래소 특화 배치 설정 (Extreme Low Latency 모드)
             self._batch_collector = RealtimeBatchCollector(
-                batch_size=50,  # 글로벌: 50개 메시지마다 전송
-                time_window=10.0,  # 글로벌: 10초마다 전송
-                max_batch_size=100,  # 글로벌: 최대 100개
+                batch_size=10,  # 10개만 모여도 즉시 전송
+                time_window=0.1,  # 최소 0.1초마다 강제 플러시 (Real-time 보장)
+                max_batch_size=20,  # 한 분할 전송 최대량 제한
                 emit_factory=emit_batch,
             )
 

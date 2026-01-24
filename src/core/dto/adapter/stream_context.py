@@ -60,4 +60,5 @@ def adapter_stream_context(dto: CommandDTO) -> StreamContextDomain:
         url=dto.connection.url,
         symbols=tuple(dto.symbols),
         projection=dto.projection,
+        correlation_id=dto.correlation_id,
     )

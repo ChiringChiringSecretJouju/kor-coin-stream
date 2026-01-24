@@ -72,7 +72,22 @@ class TickerDataProducer(AvroProducer):
         """
         topic = f"ticker-data.{scope.region}"
         if key is None:
-            key = f"{scope.exchange}:{scope.region}:ticker"
+            # 배치 내 첫 번째 메시지에서 심볼 추출하여 Kafka Key로 사용 (순서 보장)
+            # Upbit: 'code', Binance: 's', Bithumb/Coinone: 'market' 등
+            if batch and isinstance(batch[0], dict):
+                first_msg = batch[0]
+                symbol = (
+                    first_msg.get("code") or 
+                    first_msg.get("symbol") or 
+                    first_msg.get("market") or 
+                    first_msg.get("s")
+                )
+                if symbol:
+                    key = str(symbol).upper()
+            
+            # 실패 시 폴백
+            if key is None:
+                key = f"{scope.exchange}:{scope.region}:ticker"
 
         message = self._convert_to_dto(scope, batch)
         return await self.produce_sending(

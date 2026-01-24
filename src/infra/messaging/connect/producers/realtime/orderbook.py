@@ -72,7 +72,22 @@ class OrderbookDataProducer(AvroProducer):
         """
         topic = f"orderbook-data.{scope.region}"
         if key is None:
-            key = f"{scope.exchange}:{scope.region}:orderbook"
+            # 배치 내 첫 번째 메시지에서 심볼 추출하여 Kafka Key로 사용 (순서 보장)
+            if batch and isinstance(batch[0], dict):
+                first_msg = batch[0]
+                symbol = first_msg.get("symbol")
+                quote = first_msg.get("quote_currency")
+                
+                if symbol and quote:
+                    key = f"{quote}-{symbol}".upper()
+                elif symbol:
+                    key = str(symbol).upper()
+                elif first_msg.get("code"):
+                    key = str(first_msg.get("code")).upper()
+
+            # 실패 시 폴백
+            if key is None:
+                key = f"{scope.exchange}:{scope.region}:orderbook"
 
         message = self._convert_to_dto(scope, batch)
         return await self.produce_sending(

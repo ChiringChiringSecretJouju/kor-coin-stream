@@ -225,6 +225,7 @@ class AvroProducer:
                     return True  # 성공 시 즉시 반환
 
                 except Exception as e:
+                    logger.warning(f"logging warning attension!! : {e}")
                     if attempt < retries:
                         logger.warning(f"Send attempt {attempt} failed, retrying: {e}")
                         attempt += 1
@@ -604,7 +605,24 @@ class RealtimeDataProducer(AvroProducer):
     async def send_batch(self, scope: ConnectionScopeDomain, batch: BatchType) -> bool:
         """타입별 배치 전송 통합 메서드 (DTO 기반, Avro 지원)"""
         topic = f"{scope.request_type}-data.{scope.region}"
-        key = f"{scope.exchange}:{scope.region}:{scope.request_type}"
+        
+        # Kafka Key 결정 (순서 보장): Coin Symbol 추출 시도
+        key = None
+        if batch and isinstance(batch[0], dict):
+            first_msg = batch[0]
+            # 우선순위: code > symbol > target_currency > s > market
+            raw_symbol = (
+                first_msg.get("code") or 
+                first_msg.get("symbol") or 
+                first_msg.get("target_currency") or
+                first_msg.get("s") or
+                first_msg.get("market")
+            )
+            if raw_symbol:
+                key = str(raw_symbol).upper()
+
+        if key is None:
+            key = f"{scope.exchange}:{scope.region}:{scope.request_type}"
 
         # DTO로 변환 (타입 안전성 보장)
         message = self._convert_to_dto(scope, batch)

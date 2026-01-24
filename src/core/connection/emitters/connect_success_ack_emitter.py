@@ -66,7 +66,9 @@ class ConnectSuccessAckEmitter:
             f"{self.scope.exchange}/{self.scope.region}/{self.scope.request_type}"
         )
 
-    async def emit_for_symbols(self, symbols: Iterable[str]) -> bool:
+    async def emit_for_symbols(
+        self, symbols: Iterable[str], correlation_id: str | None = None
+    ) -> bool:
         """심볼 목록에 대해 ACK 이벤트를 발행.
 
         Returns: 모든 전송이 성공적으로 호출되면 True (중간 실패는 warning 로그)
@@ -81,6 +83,7 @@ class ConnectSuccessAckEmitter:
                 symbol=coin,
                 meta=ConnectSuccessMetaDTO(
                     observed_key=self._observed_key,
+                    correlation_id=correlation_id or str(uuid.uuid4()),
                 ),
             )
             key = f"{self._target.exchange}|{self._target.region}|{self._target.request_type}|{coin}"  # noqa: E501

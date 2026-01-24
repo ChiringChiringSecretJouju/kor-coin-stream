@@ -144,7 +144,10 @@ class ConnectionRegistry:
         logger.debug(f"Connection unregistered: {self._format_scope(scope)}")
 
     async def disconnect_connection(
-        self, scope: ConnectionScopeDomain, reason: str | None = None
+        self,
+        scope: ConnectionScopeDomain,
+        reason: str | None = None,
+        correlation_id: str | None = None,
     ) -> bool:
         """특정 연결 종료
 

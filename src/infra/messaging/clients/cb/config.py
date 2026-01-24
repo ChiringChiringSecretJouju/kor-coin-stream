@@ -38,10 +38,10 @@ def producer_config(**overrides: Any) -> dict:
         # 연결 안정성
         "socket.keepalive.enable": True,  # ✅ TCP keepalive
         # 배치 튜닝 (처리량 vs 지연 균형)
-        "linger.ms": 5,  # ✅ 배치 대기 시간 (낮음 = 저지연)
+        "linger.ms": 0,  # ✅ 즉시 발송 (저지연 최우선)
         "batch.size": 65536,  # ✅ 64KB (기본값 16KB보다 큼)
         # 압축 (선택)
-        "compression.type": "lz4",  # 권장: lz4 또는 zstd
+        "compression.type": "lz4",  # 권장: lz4 또는 zstd (빠른 압축)
     }
 
     cfg.update(overrides)  # 사용자 지정 값으로 덮어쓰기
@@ -64,7 +64,7 @@ def consumer_config(**overrides: Any) -> dict:
     # confluent-kafka 형식으로 변환 (지원되는 속성만 포함)
     cfg = {
         # 필수 기본 설정
-        "bootstrap.servers": kafka_settings.bootstrap_servers,
+        "bootstrap.servers": "kafka1:19092,kafka2:29092,kafka3:39092",
         "security.protocol": "PLAINTEXT",
         "group.id": kafka_settings.consumer_group_id,
         # 오프셋 관리

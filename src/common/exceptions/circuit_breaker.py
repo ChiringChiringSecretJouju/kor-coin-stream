@@ -26,8 +26,6 @@ Redis 기반 분산 서킷브레이커 구현 (Sliding Window 패턴)
 - 10:06 실패 → 10:00 실패 제거(윈도우 밖), count=2
 """
 
-from __future__ import annotations
-
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -195,25 +193,23 @@ class RedisCircuitBreaker:
             await self.start()
 
         current_time = time.time()
-        
+
         # 1. 현재 실패를 Sorted Set에 추가 (score=timestamp, member=timestamp)
         await self._redis.zadd(  # type: ignore
-            self._failure_window_key,
-            {str(current_time): current_time}
+            self._failure_window_key, {str(current_time): current_time}
         )
-        
+
         # 2. 윈도우 밖 오래된 실패 제거
         await self._cleanup_old_failures()
-        
+
         # 3. 윈도우 내 실패 카운트 조회
         failure_count = await self._get_failure_count_in_window()
-        
+
         # 4. TTL 설정 (윈도우 크기 + 버퍼 60초)
         await self._redis.expire(  # type: ignore
-            self._failure_window_key,
-            self.config.sliding_window_seconds + 60
+            self._failure_window_key, self.config.sliding_window_seconds + 60
         )
-        
+
         # 5. 임계값 초과 시 OPEN으로 전환
         if failure_count >= self.config.failure_threshold:
             await self._transition_to_open()
@@ -328,35 +324,33 @@ class RedisCircuitBreaker:
 
     async def _get_failure_count_in_window(self) -> int:
         """슬라이딩 윈도우 내 실패 카운트 조회
-        
+
         Returns:
             윈도우 내 실패 횟수
         """
         if not self._redis:
             await self.start()
-        
+
         # Sorted Set의 전체 카운트 반환 (이미 정리된 상태)
         count = await self._redis.zcard(self._failure_window_key)  # type: ignore
         return count or 0
-    
+
     async def _cleanup_old_failures(self) -> None:
         """윈도우 밖 오래된 실패 제거
-        
+
         현재 시간 기준 sliding_window_seconds 이전 실패 제거
         """
         if not self._redis:
             await self.start()
-        
+
         current_time = time.time()
         window_start = current_time - self.config.sliding_window_seconds
-        
+
         # score가 window_start보다 작은 (오래된) 항목 제거
         removed = await self._redis.zremrangebyscore(  # type: ignore
-            self._failure_window_key,
-            0,
-            window_start
+            self._failure_window_key, 0, window_start
         )
-        
+
         if removed > 0:
             logger.debug(
                 f"Circuit {self.resource_key}: Removed {removed} old failures "

@@ -96,6 +96,7 @@ class BaseWebsocketHandler(ABC):
         self._stop_requested: bool = False
         self._max_reconnect_attempts: int = websocket_settings.reconnect_max_attempts
         self._backoff_task: asyncio.Task[None] | None = None
+        self._current_correlation_id: str | None = None
 
         # 3개의 독립 emit_factory (Layer별 독립 전송)
         async def _reception_emit_factory(
@@ -180,7 +181,9 @@ class BaseWebsocketHandler(ABC):
         if not success:
             # 실패 시 에러 발행
             await self._error_handler.emit_subscription_error(
-                RuntimeError("구독 업데이트 실패"), symbols=symbols
+                RuntimeError("구독 업데이트 실패"),
+                symbols=symbols,
+                correlation_id=self._current_correlation_id,
             )
 
     async def update_subscription_raw(self, params: dict[str, Any] | list[Any]) -> None:
@@ -240,10 +243,13 @@ class BaseWebsocketHandler(ABC):
 
         await self._health_monitor.stop_monitoring()
 
-    async def websocket_connection(self, url: str, parameter_info: dict) -> None:
+    async def websocket_connection(
+        self, url: str, parameter_info: dict, correlation_id: str | None = None
+    ) -> None:
         """웹소켓에 연결하고 구독/수신 루프를 실행합니다. 끊김 시 재접속을 수행합니다."""
         socket_parameters: dict | list = parameter_info
         timeout: int = DEFAULT_MESSAGE_TIMEOUT
+        self._current_correlation_id = correlation_id
 
         if not socket_parameters:
             logger.warning(f"{self.scope.exchange}: 소켓 파라미터가 없습니다.")
@@ -452,7 +458,9 @@ class BaseWebsocketHandler(ABC):
             coin: 정규화된 심볼 ("BTC" 형식)
         """
         try:
-            await self._ack_emitter.emit_for_symbols([coin])
+            await self._ack_emitter.emit_for_symbols(
+                [coin], correlation_id=self._current_correlation_id
+            )
             logger.info(f"{self.scope.exchange}: ACK sent for symbol: {coin}")
         except Exception as ack_e:
             logger.warning(

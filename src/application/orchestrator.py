@@ -154,7 +154,10 @@ class StreamOrchestrator:
             )
         except Exception as e:
             await self._error_coordinator.emit_connection_error(
-                scope=ctx.scope, error=e, phase="handler_creation"
+                scope=ctx.scope,
+                error=e,
+                phase="handler_creation",
+                correlation_id=ctx.correlation_id,
             )
             return
 
@@ -165,7 +168,8 @@ class StreamOrchestrator:
         # 4. 연결 실행 태스크 생성
         task = asyncio.create_task(
             self._run_connection_task(ctx, handler, cache),
-            name=f"ws-{ctx.scope.exchange}-{ctx.scope.region}-{ctx.scope.request_type}",
+            name=f"ws-{ctx.scope.exchange}-{ctx.scope.region}-"
+                 f"{ctx.scope.request_type}-{ctx.correlation_id or ''}",
         )
 
         # 5. 레지스트리에 등록
@@ -174,7 +178,11 @@ class StreamOrchestrator:
         logger.info(f"{ctx.scope.exchange} 연결 태스크 시작됨")
 
     async def disconnect(
-        self, target: ConnectionTargetDTO, *, reason: str | None = None
+        self,
+        target: ConnectionTargetDTO,
+        *,
+        reason: str | None = None,
+        correlation_id: str | None = None,
     ) -> bool:
         """연결 종료 요청
 
@@ -186,7 +194,9 @@ class StreamOrchestrator:
             request_type=target.request_type,
         )
 
-        return await self._registry.disconnect_connection(scope, reason)
+        return await self._registry.disconnect_connection(
+            scope, reason, correlation_id=correlation_id
+        )
 
     async def shutdown(self) -> None:
         """모든 연결 종료
@@ -216,11 +226,19 @@ class StreamOrchestrator:
         """
         try:
             # 연결 실행
-            await self._connector.run_with(ctx, handler)
+            await self._connector.run_connection(
+                handler=handler,
+                url=ctx.url,
+                socket_params=ctx.socket_params,
+                correlation_id=ctx.correlation_id,
+            )
         except Exception as e:
             # 실행 중 에러
             await self._error_coordinator.emit_connection_error(
-                scope=ctx.scope, error=e, phase="run_with"
+                scope=ctx.scope,
+                error=e,
+                phase="run_with",
+                correlation_id=ctx.correlation_id,
             )
         finally:
             # 정리 작업
@@ -252,6 +270,7 @@ class StreamOrchestrator:
                 scope=ctx.scope,
                 error=e,
                 socket_params=ctx.socket_params,
+                correlation_id=ctx.correlation_id,
             )
 
     async def _connect_multiple_symbols(self, ctx: StreamContextDomain) -> None:
@@ -431,8 +450,11 @@ class WebsocketConnector:
         handler: ExchangeSocketHandler,
         url: str,
         socket_params: SocketParams,
+        correlation_id: str | None = None,
     ) -> None:
-        await handler.websocket_connection(url=url, parameter_info=socket_params)
+        await handler.websocket_connection(
+            url=url, parameter_info=socket_params, correlation_id=correlation_id
+        )
 
 
 class RedisCacheCoordinator:

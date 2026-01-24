@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import traceback
 
+from src.common.events import ErrorEvent, EventBus
 from src.common.exceptions.circuit_breaker import (
     CircuitBreakerOpenError,
     RedisCircuitBreaker,
@@ -78,6 +79,7 @@ class ErrorDispatcher:
         target: ConnectionTargetDTO,
         context: dict | None = None,
         producer: ErrorEventProducer | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         """전략 기반 통합 에러 디스패처"""
         # 1. 예외 분류
@@ -130,6 +132,7 @@ class ErrorDispatcher:
                     observed_key=observed_key,
                     raw_context=context,
                     producer=actual_producer,
+                    correlation_id=correlation_id,
                 )
             except Exception as e:
                 logger.error(f"Failed to send ws.error: {e}", exc_info=True)
@@ -318,6 +321,7 @@ async def dispatch_error(
     kind: str,
     target: ConnectionTargetDTO,
     context: dict | None = None,
+    correlation_id: str | None = None,
 ) -> None:
     """Event Bus 기반 에러 이벤트 발행 (EDA 패턴)
 
@@ -332,7 +336,6 @@ async def dispatch_error(
         target: 에러 발생 대상
         context: 추가 컨텍스트
     """
-    from src.common.events import ErrorEvent, EventBus
 
     await EventBus.emit(
         ErrorEvent(
@@ -340,5 +343,6 @@ async def dispatch_error(
             kind=kind,
             target=target,
             context=context,
+            correlation_id=correlation_id,
         )
     )

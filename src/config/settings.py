@@ -149,7 +149,7 @@ class WebsocketSettings(BaseSettings):
     heartbeat_timeout: int = 10
     heartbeat_fail_limit: int = 3
     receive_idle_timeout: int = 120
-    reconnect_max_attempts: int = 4
+    reconnect_max_attempts: int = 1000  # ✅ 넉넉하게 설정 (사실상 무한 재접속 지향)
 
     model_config = yaml_settings("WS_")
 
