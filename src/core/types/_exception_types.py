@@ -5,7 +5,7 @@
 
 import asyncio
 from enum import StrEnum
-from typing import Any, Awaitable, Callable, Final, TypeVar, Union
+from typing import Any, Awaitable, Callable, Final, TypeAlias, TypeVar, Union
 
 import orjson
 import websockets
@@ -20,33 +20,32 @@ AsyncWrappedCallable = Callable[..., Awaitable[Any]]
 SyncOrAsyncCallable = Union[Callable[..., Any], Callable[..., Awaitable[Any]]]
 ErrorWrappedDecorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 
-
 # Enums
-class ErrorCategory(StrEnum):
-    SYSTEM = "system"
-    BUSINESS = "business"
-    NETWORK = "network"
+class ErrorDomain(StrEnum):
+    """에러 도메인 분류"""
+
+    CONNECTION = "connection"
+    PROTOCOL = "protocol"
+    PAYLOAD = "payload"
+    DESERIALIZATION = "deserialization"
+    ORCHESTRATOR = "orchestrator"
+    CACHE = "cache"
     UNKNOWN = "unknown"
 
 
 class ErrorCode(StrEnum):
-    UNKNOWN_ERROR = "UNKNOWN_ERROR"
-    CONNECTION_ERROR = "CONNECTION_ERROR"
-    PROTOCOL_ERROR = "PROTOCOL_ERROR"
-    TIMEOUT_ERROR = "TIMEOUT_ERROR"
-    ACK_ERROR = "ACK_ERROR"
+    """에러 코드 분류"""
 
-
-class ErrorDomain(StrEnum):
-    EXCHANGE = "exchange"
-    INTERNAL = "internal"
-    INFRA = "infra"
-
-
-class RuleKind(StrEnum):
-    RETRY = "retry"
-    IGNORE = "ignore"
-    FAIL = "fail"
+    ALREADY_CONNECTED = "already_connected"
+    CONNECT_FAILED = "connect_failed"
+    DISCONNECT_FAILED = "disconnect_failed"
+    INVALID_SCHEMA = "invalid_schema"
+    MISSING_FIELD = "missing_field"
+    DESERIALIZATION_ERROR = "deserialization_error"
+    ORCHESTRATOR_ERROR = "orchestrator_error"
+    CACHE_CONFLICT = "cache_conflict"
+    DLQ_PUBLISH_FAILED = "dlq_publish_failed"
+    UNKNOWN_ERROR = "unknown_error"
 
 
 # ----------------------------------------------------------------------------
@@ -89,3 +88,8 @@ RESUBSCRIBE_EXCEPTIONS: Final[tuple[type[BaseException], ...]] = (
     *CONNECTION_EXCEPTIONS,
     *PROTOCOL_EXCEPTIONS,
 )
+
+
+ErrorCategory: TypeAlias = tuple[ErrorDomain, ErrorCode, bool]
+ExceptionGroup: TypeAlias = type[BaseException] | tuple[type[BaseException], ...]
+RuleKind: TypeAlias = tuple[str, ...]

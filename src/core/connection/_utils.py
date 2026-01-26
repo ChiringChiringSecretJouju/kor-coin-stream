@@ -34,7 +34,7 @@ SymbolFieldSpec = tuple[tuple[str, ...], bool]
 FIELD_PRIORITIES: Final[tuple[SymbolFieldSpec, ...]] = (
     # 최상위 필드 (일반적인 거래소)
     (("code",), True),              # Upbit, Bithumb
-    (("symbol",), True),            # Bitfinex, Binance (병합 후)
+    (("symbol",), True),            # Binance (병합 후)
     (("s",), True),                 # Binance
     (("market",), True),            # Coinone
     (("product_id",), True),        # Coinbase ⭐ NEW
@@ -63,7 +63,6 @@ def parse_symbol_pair(symbol: str) -> tuple[str, str]:
     기존 extract_base_currency() 로직을 확장하여 QUOTE도 함께 추출합니다.
     
     지원 포맷:
-    - Bitfinex:  "tBTCUSD"              → ("BTC", "USD")
     - Kraken:    "BTC/USD"              → ("BTC", "USD")
     - OKX:       "BTC-USDT"             → ("BTC", "USDT")
     - Upbit:     "KRW-BTC"              → ("BTC", "KRW")
@@ -89,10 +88,6 @@ def parse_symbol_pair(symbol: str) -> tuple[str, str]:
         parts = symbol.split(".")
         if len(parts) >= 2:
             symbol = parts[1]  # "btcusdt" 추출
-    
-    # 1. Bitfinex 접두사 제거 (O(1))
-    if symbol and symbol[0] == "t" and len(symbol) > 1:
-        symbol = symbol[1:]
     
     # 2. 슬래시 구분 - Kraken (O(1))
     if "/" in symbol:
@@ -147,7 +142,6 @@ def extract_base_currency(symbol: str) -> str:
         기존 코드와의 하위 호환성을 위해 유지됩니다.
     
     지원 포맷:
-    - Bitfinex:  "tBTCUSD"              → "BTC"
     - Kraken:    "BTC/USD"              → "BTC"
     - OKX:       "BTC-USDT"             → "BTC"
     - Upbit:     "KRW-BTC"              → "BTC"

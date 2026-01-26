@@ -1,6 +1,6 @@
 """실시간 데이터 DTO 통합 모듈
 
-Ticker, Orderbook, Trade 등 모든 실시간 데이터 DTO를 포함합니다.
+Ticker, Trade 등 모든 실시간 데이터 DTO를 포함합니다.
 재사용 패턴: OPTIMIZED_CONFIG, MarketContextModel 활용으로 코드 중복 제거
 """
 
@@ -118,7 +118,7 @@ class StandardTradeDTO(BaseModel):
 class RealtimeDataBatchDTO(MarketContextModel):
     """실시간 데이터 배치 DTO - 최적화됨 (MarketContextModel 재사용).
 
-    Ticker, Orderbook, Trade 데이터를 Kafka로 전송할 때 사용하는 통합 DTO입니다.
+    Ticker, Trade 데이터를 Kafka로 전송할 때 사용하는 통합 DTO입니다.
 
     특징:
     - exchange/region/request_type는 MarketContextModel에서 자동 제공
@@ -126,7 +126,6 @@ class RealtimeDataBatchDTO(MarketContextModel):
 
     토픽 전략:
         - ticker-data.{region}
-        - orderbook-data.{region}
         - trade-data.{region}
     """
 
@@ -136,5 +135,5 @@ class RealtimeDataBatchDTO(MarketContextModel):
     batch_size: int = Field(..., description="배치 크기 (메시지 수)", ge=1)
     batch_id: str | None = Field(None, description="배치 ID (선택사항)")
     data: list[dict[str, Any]] = Field(
-        ..., description="실시간 데이터 배열 (Ticker/Orderbook/Trade)"
+        ..., description="실시간 데이터 배열 (Ticker/Trade)"
     )

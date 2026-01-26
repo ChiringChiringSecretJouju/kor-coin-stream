@@ -20,13 +20,11 @@ kafka:
   status_topic:
     - ws.status.korea
     - ws.status.na
-    - ws.status.eu
     - ws.status.asia
   
   disconnection_topic:
     - ws.disconnection.korea
     - ws.disconnection.na
-    - ws.disconnection.eu
     - ws.disconnection.asia
   
   event_topic:
@@ -95,14 +93,7 @@ handlers:
     heartbeat_kind: text  # 텍스트 메시지 (동적 timestamp)
     heartbeat_message: '{"ping": 1}'  # 실제로는 동적으로 생성됨
   
-  # ========================================
-  # 유럽 거래소 (Europe)
-  # ========================================
-  bitfinex:
-    enabled: true
-    region: europe
-    heartbeat_kind: frame  # ping/pong 프레임
-    heartbeat_message: null
+
   
   # ========================================
   # 북미 거래소 (North America)

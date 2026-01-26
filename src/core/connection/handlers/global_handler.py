@@ -97,7 +97,7 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             if isinstance(parsed, dict):
                 return parsed
 
-            # list 타입이면 첫 번째 요소가 dict인지 확인 (Bitfinex 등)
+            # list 타입이면 첫 번째 요소가 dict인지 확인
             elif isinstance(parsed, list):
                 if parsed and isinstance(parsed[0], dict):
                     # list의 첫 번째 dict를 반환하되, 원본 list 정보도 포함

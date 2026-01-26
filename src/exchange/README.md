@@ -21,12 +21,12 @@ exchange/
 ├─ korea.py           # 한국 거래소 (4개)
 ├─ asia.py            # 아시아 거래소 (4개)
 ├─ na.py              # 북미 거래소 (2개)
-└─ europe.py          # 유럽 거래소 (1개)
+└─ na.py              # 북미 거래소 (2개)
 ```
 
 **파일 수**: 5개  
 **총 코드 라인**: ~1,000줄  
-**지원 거래소**: 11개
+**지원 거래소**: 10개
 
 ## 지원 거래소
 
@@ -52,10 +52,6 @@ exchange/
 - KrakenWebsocketHandler     # Kraken
 ```
 
-### 유럽 (europe.py)
-```python
-- BitfinexWebsocketHandler   # Bitfinex
-```
 
 **단일 구독***: 한 연결당 하나의 심볼만 구독 가능 (자동 분리 처리)
 
@@ -82,9 +78,7 @@ HANDLER_MAP: dict[str, dict[str, type]] = {
         "coinbase": CoinbaseWebsocketHandler,
         "kraken": KrakenWebsocketHandler,
     },
-    "europe": {
-        "bitfinex": BitfinexWebsocketHandler,
-    },
+
 }
 ```
 
@@ -153,7 +147,7 @@ class UpbitWebsocketHandler(BaseKoreaWebsocketHandler):
 
 3. **메시지 처리**
    - JSON 파싱
-   - 메시지 타입별 라우팅 (ticker/orderbook/trade)
+   - 메시지 타입별 라우팅 (ticker/trade)
    - 에러 메시지 처리
 
 4. **메트릭 수집**
@@ -313,7 +307,7 @@ _parse_message()
   ↓
 메시지 타입 판별
   ├─ ticker → ticker_message()
-  ├─ orderbook → orderbook_message()
+
   ├─ trade → trade_message()
   └─ error → error_message()
   ↓
@@ -406,10 +400,9 @@ class MockWebSocket:
 - [OKX API](https://www.okx.com/docs-v5/en/)
 - [Huobi API](https://huobiapi.github.io/docs/)
 
-### 북미 & 유럽
+### 북미
 - [Coinbase API](https://docs.cloud.coinbase.com/exchange/docs)
 - [Kraken API](https://docs.kraken.com/websockets/)
-- [Bitfinex API](https://docs.bitfinex.com/docs)
 
 ## 관련 모듈
 

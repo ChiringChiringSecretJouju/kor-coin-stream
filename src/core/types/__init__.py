@@ -17,6 +17,7 @@ from src.core.types._exception_types import (
     ErrorCode,
     ErrorDomain,
     ErrorWrappedDecorator,
+    ExceptionGroup,
     RuleKind,
     SyncOrAsyncCallable,
 )
@@ -47,7 +48,9 @@ __all__ = [
     # _exception_types
     "ErrorDomain",
     "ErrorCode",
+    "ErrorCode",
     "ErrorCategory",
+    "ExceptionGroup",
     "RuleKind",
     "RuleDict",
     # _payload_type

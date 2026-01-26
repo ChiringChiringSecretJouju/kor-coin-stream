@@ -7,7 +7,6 @@ from typing import Any, Awaitable, Callable, Literal, TypeAlias
 
 from src.common.logger import PipelineLogger
 from src.core.types import (
-    OrderbookResponseData,
     TickerResponseData,
     TradeResponseData,
 )
@@ -17,7 +16,7 @@ logger = PipelineLogger.get_logger("realtime_collector", "connection")
 # 타입 정의
 EmitFactory: TypeAlias = Callable[[list[dict[str, Any]]], Awaitable[bool]]
 MessageType: TypeAlias = Literal["ticker", "orderbook", "trade"]
-BatchData: TypeAlias = TickerResponseData | OrderbookResponseData | TradeResponseData
+BatchData: TypeAlias = TickerResponseData | TradeResponseData
 MemoryStorage: TypeAlias = dict[MessageType, deque[BatchData]]
 
 # 상수 정의

@@ -38,7 +38,6 @@ from src.core.dto.io.monitoring import (
 )
 from src.core.dto.io.realtime import RealtimeDataBatchDTO
 from src.core.types import (
-    OrderbookResponseData,
     TickerResponseData,
     TradeResponseData,
 )
@@ -63,7 +62,7 @@ logger = PipelineLogger(__name__)
 # - AvroProducerWrapper: Avro 스키마 기반 직렬화
 # - JsonProducerWrapper: orjson 기반 JSON 직렬화
 KeyType = str | bytes | None
-BatchType = list[TickerResponseData | OrderbookResponseData | TradeResponseData]
+BatchType = list[TickerResponseData | TradeResponseData]
 
 
 class AvroProducer:
@@ -570,11 +569,10 @@ class RealtimeDataProducer(AvroProducer):
 
     토픽 전략:
     - ticker-data.{region}
-    - orderbook-data.{region}
     - trade-data.{region}
 
     성능 최적화:
-    - use_avro=True: AvroProducerWrapper (ticker/orderbook/trade-data-value 스키마) - 기본값
+    - use_avro=True: AvroProducerWrapper (ticker/trade-data-value 스키마) - 기본값
     - use_avro=False: JsonProducerWrapper (orjson 기반, 3-5배 빠름)
     - 부모 클래스 기반 고성능 비동기 처리
     - Avro 직렬화로 20-40% 메시지 크기 감소
@@ -599,7 +597,7 @@ class RealtimeDataProducer(AvroProducer):
             timestamp_ms=int(time.time() * 1000),
             batch_size=len(batch),
             batch_id=None,  # 선택적 필드
-            data=batch,  # Ticker/Orderbook/Trade 원본 데이터
+            data=batch,  # Ticker/Trade 원본 데이터
         )
 
     async def send_batch(self, scope: ConnectionScopeDomain, batch: BatchType) -> bool:

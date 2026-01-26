@@ -19,9 +19,6 @@ from src.exchange.asia import (
     HuobiWebsocketHandler,
     OKXWebsocketHandler,
 )
-from src.exchange.europe import (
-    BitfinexWebsocketHandler,
-)
 from src.exchange.korea import (
     BithumbWebsocketHandler,
     CoinoneWebsocketHandler,
@@ -43,7 +40,6 @@ ExchangeSocketHandler: TypeAlias = (
     | BybitWebsocketHandler
     | OKXWebsocketHandler
     | HuobiWebsocketHandler
-    | BitfinexWebsocketHandler
     | CoinbaseWebsocketHandler
     | KrakenWebsocketHandler
 )

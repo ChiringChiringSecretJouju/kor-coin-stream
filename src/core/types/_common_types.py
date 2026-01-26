@@ -10,7 +10,7 @@ DEFAULT_SCHEMA_VERSION: Final[str] = "1.0"
 # - I/O 스키마(카프카 이벤트 등) 세부는 각 모듈에 두고, 여기에는 기반 타입만 둡니다.
 
 # 지역/요청타입은 일단 자유 문자열을 허용합니다. 필요 시 Literal로 좁힐 수 있습니다.
-Region: TypeAlias = Literal["korea", "na", "eu", "asia"]
+Region: TypeAlias = Literal["korea", "na", "asia"]
 RequestType: TypeAlias = Literal["ticker", "trade"]
 ExchangeName: TypeAlias = Literal[
     "upbit",
@@ -23,7 +23,6 @@ ExchangeName: TypeAlias = Literal[
     "okx",
     "coinbase",
     "kraken",
-    "bitfinex",
     "huobi",
 ]
 SocketParams: TypeAlias = dict[str, Any] | list[dict[str, Any]] | list[Any] | list[str]

@@ -31,7 +31,6 @@ Settings 주입 (NEW!):
 from dependency_injector import containers, providers
 
 from src.application.connection_registry import ConnectionRegistry
-from src.application.error_coordinator import ErrorCoordinator
 from src.application.orchestrator import (
     StreamOrchestrator,
     WebsocketConnector,
@@ -56,7 +55,6 @@ from src.exchange.asia import (
     HuobiWebsocketHandler,
     OKXWebsocketHandler,
 )
-from src.exchange.europe import BitfinexWebsocketHandler
 from src.exchange.korea import (
     BithumbWebsocketHandler,
     CoinoneWebsocketHandler,
@@ -83,7 +81,7 @@ HANDLER_CLASS_MAP = {
     "okx": OKXWebsocketHandler,
     "huobi": HuobiWebsocketHandler,
     # 유럽
-    "bitfinex": BitfinexWebsocketHandler,
+
     # 북미
     "coinbase": CoinbaseWebsocketHandler,
     "kraken": KrakenWebsocketHandler,
@@ -289,30 +287,7 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
 # ========================================
 # 3-3. Europe Handler Container (유럽 거래소)
 # ========================================
-class EuropeHandlerContainer(containers.DeclarativeContainer):
-    """유럽 거래소 핸들러 컨테이너
 
-    Exchanges:
-        - Bitfinex (비트파이넥스)
-
-    Features:
-        - 100% YAML 기반 설정
-        - heartbeat 설정 자동 주입
-    """
-
-    config = providers.Configuration()
-
-    bitfinex = providers.Factory(
-        HANDLER_CLASS_MAP["bitfinex"],
-        exchange_name="bitfinex",
-        region=config.handlers.bitfinex.region,
-        request_type=providers.Dependency(),
-        heartbeat_kind=config.handlers.bitfinex.heartbeat_kind,
-        heartbeat_message=config.handlers.bitfinex.heartbeat_message,
-    )
-
-    # 유럽 거래소 전용 FactoryAggregate
-    europe_handlers = providers.FactoryAggregate(bitfinex=bitfinex)
 
 
 # ========================================
@@ -390,7 +365,6 @@ class HandlerContainer(containers.DeclarativeContainer):
     # 지역별 Container 포함
     korea = providers.Container(KoreaHandlerContainer, config=config)
     asia = providers.Container(AsiaHandlerContainer, config=config)
-    europe = providers.Container(EuropeHandlerContainer, config=config)
     north_america = providers.Container(NorthAmericaHandlerContainer, config=config)
 
     # 모든 지역의 핸들러를 통합한 FactoryAggregate
@@ -405,8 +379,6 @@ class HandlerContainer(containers.DeclarativeContainer):
         bybit=asia.bybit,
         okx=asia.okx,
         huobi=asia.huobi,
-        # Europe (1)
-        bitfinex=europe.bitfinex,
         # North America (2)
         coinbase=north_america.coinbase,
         kraken=north_america.kraken,
@@ -440,12 +412,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     # ===== Core Components (StreamOrchestrator 의존성) =====
     connection_registry = providers.Factory(ConnectionRegistry)
-    error_coordinator = providers.Factory(
-        ErrorCoordinator, error_producer=messaging.error_producer
-    )
-    websocket_connector = providers.Singleton(
-        WebsocketConnector, handler_map=handlers.handler_factory
-    )
+
     websocket_connector = providers.Singleton(
         WebsocketConnector, handler_map=handlers.handler_factory
     )
@@ -455,7 +422,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         StreamOrchestrator,
         error_producer=messaging.error_producer,
         registry=connection_registry,
-        error_coordinator=error_coordinator,
         connector=websocket_connector,
     )
 
