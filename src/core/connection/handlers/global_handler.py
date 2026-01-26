@@ -8,7 +8,7 @@ import orjson
 
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
-from src.config.settings import websocket_settings
+from src.config.settings import kafka_settings, websocket_settings
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
@@ -16,12 +16,8 @@ from src.core.connection.utils.parse import update_dict
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     MessageHandler,
-    OrderbookResponseData,
     TickerResponseData,
     TradeResponseData,
-)
-from src.infra.messaging.connect.producers.realtime.orderbook import (
-    OrderbookDataProducer,
 )
 from src.infra.messaging.connect.producers.realtime.ticker import TickerDataProducer
 from src.infra.messaging.connect.producers.realtime.trade import TradeDataProducer
@@ -64,7 +60,6 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         # 배치 수집기 및 프로듀서 (글로벌 거래소 특화 설정)
         self._batch_collector: RealtimeBatchCollector | None = None
         self._ticker_producer: TickerDataProducer | None = None
-        self._orderbook_producer: OrderbookDataProducer | None = None
         self._trade_producer: TradeDataProducer | None = None
         self._batch_enabled = True  # 배치 수집 활성화 플래그
 
@@ -158,14 +153,15 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         if not self._batch_enabled:
             return
         try:
-            # 타입별 Producer 초기화 (Avro 지원)
+            # 타입별 Producer 초기화 (Avro 지원, Array Format 옵션 적용)
+            use_array_format = kafka_settings.use_array_format
             self._ticker_producer = TickerDataProducer(use_avro=True)
-            self._orderbook_producer = OrderbookDataProducer(use_avro=False)
-            self._trade_producer = TradeDataProducer(use_avro=False)
+            self._trade_producer = TradeDataProducer(
+                use_avro=False, use_array_format=use_array_format
+            )
 
             # Producer 시작
             await self._ticker_producer.start_producer()
-            await self._orderbook_producer.start_producer()
             await self._trade_producer.start_producer()
 
             # 배치 수집기 초기화 (글로벌 거래소 특화 설정)
@@ -175,10 +171,6 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
 
                 if request_type == "ticker" and self._ticker_producer:
                     return await self._ticker_producer.send_batch(
-                        scope=self.scope, batch=batch
-                    )
-                elif request_type == "orderbook" and self._orderbook_producer:
-                    return await self._orderbook_producer.send_batch(
                         scope=self.scope, batch=batch
                     )
                 elif request_type == "trade" and self._trade_producer:
@@ -224,9 +216,6 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         if self._ticker_producer:
             await self._ticker_producer.stop_producer()
             self._ticker_producer = None
-        if self._orderbook_producer:
-            await self._orderbook_producer.stop_producer()
-            self._orderbook_producer = None
         if self._trade_producer:
             await self._trade_producer.stop_producer()
             self._trade_producer = None
@@ -314,65 +303,7 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
 
         return filtered_message
 
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        """오더북 메시지 처리 함수 (글로벌 거래소 배치 수집 지원)"""
-        parsed_message = (
-            message if isinstance(message, dict) else self._parse_message(message)
-        )
 
-        # 빈 메시지나 파싱 실패 시 무시
-        if not parsed_message:
-            return None
-
-        # 글로벌 거래소 공통 응답 처리
-        logger.debug(
-            f"""
-            {self.scope.exchange}: orderbook_message received, 
-            keys={list(parsed_message.keys()) if isinstance(parsed_message, dict) else 'not_dict'}
-            """
-        )
-
-        if parsed_message.get("result") is not None:
-            # Binance, OKX 등의 result 기반 응답
-            result = parsed_message.get("result")
-            logger.debug(f"{self.scope.exchange}: result field found: {result}")
-            if result == "success":
-                self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Subscription confirmed (result=success)"
-                )
-                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-                await self._emit_connect_success_ack()
-                return None
-
-        event = parsed_message.get("event")
-        if event in ("subscribe", "subscribed"):
-            # Bybit, Gate.io 등의 event 기반 응답
-            logger.info(
-                f"{self.scope.exchange}: Subscription confirmed (event={event})"
-            )
-            self._log_status("subscribed")
-            # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-            await self._emit_connect_success_ack()
-            return None
-
-        # data 필드가 있으면 병합
-        data_sub: dict | None = parsed_message.get("data", None)
-        if isinstance(data_sub, dict):
-            parsed_message = update_dict(parsed_message, "data")
-
-        # projection이 지정되면 해당 필드만 추출
-        fields: list[str] | None = self.projection
-        if fields:
-            filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
-        else:
-            filtered_message = parsed_message
-
-        # 배치 수집기에 메시지 추가 (글로벌 거래소 특화)
-        if self._batch_enabled and self._batch_collector:
-            await self._batch_collector.add_message("orderbook", filtered_message)
-
-        return filtered_message
 
     async def trade_message(self, message: Any) -> TradeResponseData | None:
         """체결 메시지 처리 함수 (글로벌 거래소 배치 수집 지원)"""
@@ -455,7 +386,6 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             # 메시지 타입별 핸들러 호출
             handler_map: MessageHandler = {
                 "ticker": self.ticker_message,
-                "orderbook": self.orderbook_message,
                 "trade": self.trade_message,
             }
             fn = handler_map.get(self.scope.request_type)

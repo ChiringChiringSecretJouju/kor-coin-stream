@@ -33,15 +33,13 @@ from dependency_injector import containers, providers
 from src.application.connection_registry import ConnectionRegistry
 from src.application.error_coordinator import ErrorCoordinator
 from src.application.orchestrator import (
-    RedisCacheCoordinator,
     StreamOrchestrator,
-    SubscriptionManager,
     WebsocketConnector,
 )
 from src.config.init_infra import (
     init_error_producer,
     init_metrics_producer,
-    init_orderbook_producer,
+    # init_orderbook_producer,  # Removed
     init_redis,
     init_ticker_producer,
     init_trade_producer,
@@ -149,10 +147,10 @@ class MessagingContainer(containers.DeclarativeContainer):
         use_avro=config.use_avro.as_(bool),
     )
 
-    orderbook_producer = providers.Resource(
-        init_orderbook_producer,
-        use_avro=config.use_avro.as_(bool),
-    )
+    # orderbook_producer = providers.Resource(
+    #     init_orderbook_producer,
+    #     use_avro=config.use_avro.as_(bool),
+    # )
 
     trade_producer = providers.Resource(
         init_trade_producer,
@@ -448,8 +446,9 @@ class ApplicationContainer(containers.DeclarativeContainer):
     websocket_connector = providers.Singleton(
         WebsocketConnector, handler_map=handlers.handler_factory
     )
-    cache_coordinator = providers.Factory(RedisCacheCoordinator)
-    subscription_manager = providers.Factory(SubscriptionManager)
+    websocket_connector = providers.Singleton(
+        WebsocketConnector, handler_map=handlers.handler_factory
+    )
 
     # ===== StreamOrchestrator (모든 의존성 주입) =====
     orchestrator = providers.Singleton(
@@ -458,8 +457,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         registry=connection_registry,
         error_coordinator=error_coordinator,
         connector=websocket_connector,
-        cache=cache_coordinator,
-        subs=subscription_manager,
     )
 
     # ===== Kafka Consumers =====

@@ -6,9 +6,6 @@ from src.infra.messaging.connect.producers.error.error_event import (
     ErrorEventProducer,
 )
 from src.infra.messaging.connect.producers.metrics.metrics import MetricsProducer
-from src.infra.messaging.connect.producers.realtime.orderbook import (
-    OrderbookDataProducer,
-)
 from src.infra.messaging.connect.producers.realtime.ticker import TickerDataProducer
 from src.infra.messaging.connect.producers.realtime.trade import TradeDataProducer
 
@@ -49,15 +46,7 @@ async def init_ticker_producer(use_avro: bool) -> AsyncIterator[TickerDataProduc
     await producer.stop_producer()
 
 
-@asynccontextmanager
-async def init_orderbook_producer(
-    use_avro: bool,
-) -> AsyncIterator[OrderbookDataProducer]:
-    """OrderbookDataProducer 초기화 및 정리"""
-    producer = OrderbookDataProducer(use_avro=use_avro)
-    await producer.start_producer()
-    yield producer
-    await producer.stop_producer()
+
 
 
 @asynccontextmanager

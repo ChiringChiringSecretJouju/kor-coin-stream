@@ -65,11 +65,11 @@ class KorbitTradeParser(TradeParser):
         # isBuyerTaker=True → 매수 주문이 Taker → 실제 체결은 매수(BID)
         # isBuyerTaker=False → 매도 주문이 Taker → 실제 체결은 매도(ASK)
         is_buyer_taker: bool = flattened.get("isBuyerTaker", False)
-        ask_bid = "BID" if is_buyer_taker else "ASK"
+        ask_bid = 1 if is_buyer_taker else -1
         
         return StandardTradeDTO(
             code=code,
-            trade_timestamp=int(flattened["timestamp"]),
+            trade_timestamp=float(flattened["timestamp"]) / 1000.0,
             trade_price=float(flattened["price"]),
             trade_volume=float(flattened["qty"]),
             ask_bid=ask_bid,

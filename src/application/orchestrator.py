@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Final, TypeAlias
+from typing import Final, TypeAlias
 
 # 새로운 컴포넌트들
 from src.application.connection_registry import ConnectionRegistry
-from src.application.error_coordinator import ErrorCoordinator
 from src.common.logger import PipelineLogger
+from src.core.connection.handlers.base import BaseWebsocketHandler
+from src.core.connection.utils.subscription import extract_subscription_symbols
+from src.core.decorators import catch_exception
 from src.core.dto.internal.cache import WebsocketConnectionSpecDomain
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.internal.orchestrator import StreamContextDomain
@@ -24,6 +26,9 @@ from src.core.types import (
     CONNECTION_STATUS_DISCONNECTED,
     SocketParams,
 )
+from src.core.types._exception_types import (
+    RESUBSCRIBE_EXCEPTIONS,
+)
 from src.infra.cache.cache_store import WebsocketConnectionCache
 from src.infra.messaging.connect.producers.error.error_event import (
     ErrorEventProducer,
@@ -31,9 +36,8 @@ from src.infra.messaging.connect.producers.error.error_event import (
 
 logger = PipelineLogger.get_logger("orchestrator_refactored", "app")
 
-# 타입 정의: Any handler (DI Container에서 주입)
-# FactoryAggregate가 동적으로 핸들러를 반환하므로 Any 사용
-ExchangeSocketHandler: TypeAlias = Any
+# 타입 정의: BaseWebsocketHandler (구체적인 핸들러 타입)
+ExchangeSocketHandler: TypeAlias = BaseWebsocketHandler
 
 # 단일 구독 전용 거래소 (각 심볼마다 별도 WebSocket 연결 필요)
 SINGLE_SUBSCRIPTION_ONLY: Final[frozenset[str]] = frozenset(
@@ -64,28 +68,20 @@ class StreamOrchestrator:
         self,
         error_producer: ErrorEventProducer,
         registry: ConnectionRegistry,
-        error_coordinator: ErrorCoordinator,
         connector: WebsocketConnector,
-        cache: RedisCacheCoordinator,
-        subs: SubscriptionManager,
     ) -> None:
         """오케스트레이터 초기화 (DI)
         
         Args:
-            error_producer: 에러 이벤트 프로듀서 (Resource로 자동 관리)
+            error_producer: 에러 이벤트 프로듀서
             registry: 연결 레지스트리
-            error_coordinator: 에러 코디네이터
-            connector: 웹소켓 커넥터 (FactoryAggregate 포함)
-            cache: Redis 캐시 코디네이터
-            subs: 구독 관리자
+            connector: 웹소켓 커넥터
         """
         # ✅ 의존성이 자동으로 주입됨!
         self._error_producer = error_producer
         self._registry = registry
-        self._error_coordinator = error_coordinator
         self._connector = connector
-        self._cache = cache
-        self._subs = subs
+        # self._subs는 제거됨
 
         # Producer 시작 상태 추적
         # Note: Resource provider가 자동으로 start_producer를 호출하므로
@@ -112,6 +108,7 @@ class StreamOrchestrator:
                 "StreamOrchestrator.startup() called (DI mode: Producer already started)"
             )
 
+    @catch_exception(phase="connect_from_context", level="error")
     async def connect_from_context(self, ctx: StreamContextDomain) -> None:
         """컨텍스트 기반 연결 생성
 
@@ -147,23 +144,18 @@ class StreamOrchestrator:
             return
 
         # 2. 핸들러 생성 (커넥터 책임)
-        try:
-            handler = self._connector.create_handler_with(ctx.scope, ctx.projection)
-            logger.info(
-                f"{ctx.scope.exchange} 핸들러 생성: {handler.__class__.__name__}"
-            )
-        except Exception as e:
-            await self._error_coordinator.emit_connection_error(
-                scope=ctx.scope,
-                error=e,
-                phase="handler_creation",
-                correlation_id=ctx.correlation_id,
-            )
-            return
+        handler = self._connector.create_handler_with(ctx.scope, ctx.projection)
+        logger.info(
+            f"{ctx.scope.exchange} 핸들러 생성: {handler.__class__.__name__}"
+        )
 
-        # 3. 캐시 준비 (캐시 코디네이터 책임)
-        cache = self._cache.make_cache_with(ctx)
-        await self._cache.on_start_with(ctx, cache)
+        # 3. 캐시 준비 (직접 관리)
+        spec = WebsocketConnectionSpecDomain(scope=ctx.scope, symbols=ctx.symbols)
+        cache = WebsocketConnectionCache(spec)
+        # 상태 업데이트
+        await cache.update_connection_state(CONNECTION_STATUS_CONNECTED)
+        if ctx.symbols:
+            await cache.replace_symbols(list(ctx.symbols))
 
         # 4. 연결 실행 태스크 생성
         task = asyncio.create_task(
@@ -205,15 +197,13 @@ class StreamOrchestrator:
         """
         await self._registry.shutdown_all()
 
-        # Circuit Breaker 정리
-        await self._error_coordinator.cleanup()
-
         # Producer 정리
         if self._producer_started:
             await self._error_producer.stop_producer()
             self._producer_started = False
             logger.info("ErrorEventProducer stopped")
 
+    @catch_exception(phase="run_connection_task", level="error")
     async def _run_connection_task(
         self,
         ctx: StreamContextDomain,
@@ -232,47 +222,57 @@ class StreamOrchestrator:
                 socket_params=ctx.socket_params,
                 correlation_id=ctx.correlation_id,
             )
-        except Exception as e:
-            # 실행 중 에러
-            await self._error_coordinator.emit_connection_error(
-                scope=ctx.scope,
-                error=e,
-                phase="run_with",
-                correlation_id=ctx.correlation_id,
-            )
         finally:
             # 정리 작업
-            await self._cache.on_stop(cache)
+            await cache.update_connection_state(CONNECTION_STATUS_DISCONNECTED)
+            await cache.remove_connection()
             self._registry.unregister_connection(ctx.scope)
 
+    @catch_exception(
+        exceptions=RESUBSCRIBE_EXCEPTIONS, 
+        phase="handle_resubscribe", 
+        level="warning"
+    )
     async def _handle_resubscribe(self, ctx: StreamContextDomain) -> None:
         """재구독 처리 (내부 메서드)
-
-        중복 연결 시 재구독을 처리합니다.
+        
+        중복 연결 시 기존 연결에 새로운 심볼을 동적으로 추가합니다.
         """
-        try:
-            handler = self._registry.get_handler(ctx.scope)
-            cache = self._cache.make_cache_with(ctx)
-
-            success = await self._subs.handle_resubscribe(
-                running=handler,
-                cache=cache,
-                ctx=ctx,
+        handler = self._registry.get_handler(ctx.scope)
+        if not isinstance(handler, BaseWebsocketHandler):
+            logger.warning(
+                f"재구독 실패: 핸들러가 BaseWebsocketHandler 타입이 아님 ({type(handler)})"
             )
+            return
 
-            if success:
-                logger.info(f"재구독 성공: {ctx.scope.exchange}")
-            else:
-                logger.warning(f"재구독 실패: {ctx.scope.exchange}")
+        spec = WebsocketConnectionSpecDomain(scope=ctx.scope, symbols=ctx.symbols)
+        cache = WebsocketConnectionCache(spec)
+        
+        # 1. 심볼 추출 (유틸리티 사용)
+        symbols: list[str] = []
+        subscribe_type: str | None = None
+        
+        if isinstance(ctx.socket_params, dict):
+            symbols = extract_subscription_symbols(ctx.socket_params)
+            st = ctx.socket_params.get("subscribe_type")
+            if isinstance(st, str):
+                subscribe_type = st
+        elif isinstance(ctx.socket_params, list):
+            # 리스트 형태 파라미터에서도 추출 시도
+            symbols = extract_subscription_symbols(ctx.socket_params)
 
-        except Exception as e:
-            await self._error_coordinator.emit_resubscribe_error(
-                scope=ctx.scope,
-                error=e,
-                socket_params=ctx.socket_params,
-                correlation_id=ctx.correlation_id,
-            )
+        # 2. 캐시 갱신 (누적)
+        if symbols:
+            # RedisCache.replace_symbols는 덮어쓰기이므로 주의 필요
+            # 하지만 현재 캐시 로직상 활성 심볼 목록을 최신화하는 것이므로 replace가 적절할 수 있음
+            await cache.replace_symbols(symbols)
 
+        # 3. 핸들러에 동적 구독 요청 (Zero-Downtime)
+        if symbols:
+            await handler.update_subscription(symbols, subscribe_type)
+            logger.info(f"재구독(동적 추가) 요청 완료: {ctx.scope.exchange} -> {symbols}")
+
+    @catch_exception(phase="connect_multiple_symbols", level="error")
     async def _connect_multiple_symbols(self, ctx: StreamContextDomain) -> None:
         """단일 구독 거래소용: 여러 심볼을 개별 연결로 분리 (내부 메서드)
 
@@ -289,40 +289,39 @@ class StreamOrchestrator:
             logger.info(f"  → {ctx.scope.exchange} 개별 연결 생성: {symbol}")
 
             # 재귀 호출하지 않고 직접 연결 로직 수행
-            try:
-                # 중복 연결 확인 (단일 구독 거래소는 재구독 불가)
-                if self._registry.is_running(single_ctx.scope):
-                    logger.info(
-                        f"  → {symbol}: 이미 연결 중 - 스킵 "
-                        f"(단일 구독 거래소는 재구독 불가)"
-                    )
-                    continue
-
-                # 핸들러 생성
-                handler = self._connector.create_handler_with(
-                    single_ctx.scope, single_ctx.projection
+            # 중복 연결 확인 (단일 구독 거래소는 재구독 불가)
+            if self._registry.is_running(single_ctx.scope):
+                logger.info(
+                    f"  → {symbol}: 이미 연결 중 - 스킵 "
+                    f"(단일 구독 거래소는 재구독 불가)"
                 )
+                continue
 
-                # 캐시 준비
-                cache = self._cache.make_cache_with(single_ctx)
-                await self._cache.on_start_with(single_ctx, cache)
+            # 핸들러 생성
+            handler = self._connector.create_handler_with(
+                single_ctx.scope, single_ctx.projection
+            )
 
-                # 연결 태스크 생성
-                task = asyncio.create_task(
-                    self._run_connection_task(single_ctx, handler, cache),
-                    name=f"ws-{single_ctx.scope.exchange}-{single_ctx.scope.region}-"
-                    f"{single_ctx.scope.request_type}-{symbol}",
-                )
+            # 캐시 준비 (직접 관리)
+            single_spec = WebsocketConnectionSpecDomain(
+                scope=single_ctx.scope, symbols=single_ctx.symbols
+            )
+            cache = WebsocketConnectionCache(single_spec)
+            await cache.update_connection_state(CONNECTION_STATUS_CONNECTED)
+            if single_ctx.symbols:
+                await cache.replace_symbols(list(single_ctx.symbols))
 
-                # 레지스트리 등록
-                self._registry.register_connection(single_ctx.scope, task, handler)
+            # 연결 태스크 생성
+            task = asyncio.create_task(
+                self._run_connection_task(single_ctx, handler, cache),
+                name=f"ws-{single_ctx.scope.exchange}-{single_ctx.scope.region}-"
+                f"{single_ctx.scope.request_type}-{symbol}",
+            )
 
-                logger.info(f"  → {symbol}: 연결 태스크 시작됨")
+            # 레지스트리 등록
+            self._registry.register_connection(single_ctx.scope, task, handler)
 
-            except Exception as e:
-                await self._error_coordinator.emit_connection_error(
-                    scope=single_ctx.scope, error=e, phase="multi_symbol_connect"
-                )
+            logger.info(f"  → {symbol}: 연결 태스크 시작됨")
 
     def _add_symbol_to_context(
         self, ctx: StreamContextDomain, symbol: str
@@ -457,64 +456,7 @@ class WebsocketConnector:
         )
 
 
-class RedisCacheCoordinator:
-    """Redis 캐시 관련 책임"""
-
-    def make_cache_with(self, ctx: StreamContextDomain) -> WebsocketConnectionCache:
-        spec = WebsocketConnectionSpecDomain(scope=ctx.scope, symbols=ctx.symbols)
-        return WebsocketConnectionCache(spec)
-
-    async def on_start(
-        self, cache: WebsocketConnectionCache, symbols: list[str]
-    ) -> None:
-        await cache.update_connection_state(CONNECTION_STATUS_CONNECTED)
-        if symbols:
-            await cache.replace_symbols(symbols)
-
-    async def on_start_with(
-        self, ctx: StreamContextDomain, cache: WebsocketConnectionCache
-    ) -> None:
-        await self.on_start(cache, list(ctx.symbols))
-
-    async def on_stop(self, cache: WebsocketConnectionCache) -> None:
-        await cache.update_connection_state(CONNECTION_STATUS_DISCONNECTED)
-        await cache.remove_connection()
 
 
-class SubscriptionManager:
-    """구독/재구독 및 심볼 추출 책임"""
 
-    def extract_symbols(self, socket_params: SocketParams) -> list[str]:
-        symbols_field = None
-        if isinstance(socket_params, dict):
-            symbols_field = socket_params.get("symbols")
-        elif isinstance(socket_params, list):
-            return []
 
-        if isinstance(symbols_field, list):
-            return [str(s) for s in symbols_field if s]
-        return []
-
-    async def handle_resubscribe(
-        self,
-        running: ExchangeSocketHandler | None,
-        cache: WebsocketConnectionCache,
-        ctx: StreamContextDomain,
-    ) -> bool:
-        subscribe_type: str | None = None
-        symbols: list[str] = []
-
-        if isinstance(ctx.socket_params, dict):
-            symbols = self.extract_symbols(ctx.socket_params)
-            st = ctx.socket_params.get("subscribe_type")
-            if isinstance(st, str):
-                subscribe_type = st
-
-        if symbols:
-            await cache.replace_symbols(symbols)
-
-        if running is not None and symbols:
-            await running.update_subscription(symbols, subscribe_type)  # type: ignore[attr-defined]
-            logger.info(f"재구독 완료: {ctx.scope.exchange} -> {symbols}")
-
-        return True

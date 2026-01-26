@@ -330,7 +330,6 @@ class ErrorStrategy:
     send_to_ws_error: bool  # ws.error 토픽 발행 여부
     send_to_dlq: bool  # DLQ 전송 여부
     log_level: str = "error"  # 로그 레벨
-    circuit_break: bool = False  # Circuit Breaker 트리거 여부
     alert: bool = False  # 알람 발송 여부 (Slack/PagerDuty)
 
 
@@ -342,7 +341,6 @@ ERROR_STRATEGIES: dict[ErrorCode, ErrorStrategy] = {
         send_to_ws_error=True,
         send_to_dlq=False,
         log_level="critical",
-        circuit_break=True,  # 5회 실패 시 Circuit Open
         alert=True,  # 즉시 알람
     ),
     ErrorCode.DISCONNECT_FAILED: ErrorStrategy(
@@ -350,7 +348,6 @@ ERROR_STRATEGIES: dict[ErrorCode, ErrorStrategy] = {
         send_to_ws_error=True,
         send_to_dlq=False,
         log_level="critical",
-        circuit_break=False,
         alert=True,
     ),
     ErrorCode.UNKNOWN_ERROR: ErrorStrategy(
@@ -358,7 +355,6 @@ ERROR_STRATEGIES: dict[ErrorCode, ErrorStrategy] = {
         send_to_ws_error=True,
         send_to_dlq=True,  # 원인 파악용
         log_level="critical",
-        circuit_break=False,
         alert=True,
     ),
     ErrorCode.DLQ_PUBLISH_FAILED: ErrorStrategy(
@@ -366,7 +362,6 @@ ERROR_STRATEGIES: dict[ErrorCode, ErrorStrategy] = {
         send_to_ws_error=True,
         send_to_dlq=False,  # DLQ 자체 실패는 DLQ로 보내지 않음
         log_level="critical",
-        circuit_break=False,
         alert=True,
     ),
     # ========== WARNING 에러들 (모니터링 필요) ==========

@@ -25,37 +25,6 @@ class PayloadAction(str, Enum):
     UPDATE = "update"
 
 
-class OrderbookItem(TypedDict):
-    """호가 아이템 (price, size).
-    
-    **DEPRECATED**: src.core.dto.io.orderbook.OrderbookItemDTO 사용 권장
-    
-    표준화된 orderbook의 개별 호가 데이터입니다.
-    모든 거래소에서 동일한 형식으로 변환됩니다.
-    """
-    
-    price: str
-    size: str
-
-
-class StandardOrderbook(TypedDict):
-    """표준화된 Orderbook 포맷.
-    
-    **DEPRECATED**: src.core.dto.io.orderbook.StandardOrderbookDTO 사용 권장
-    
-    모든 거래소의 orderbook 데이터를 동일한 형식으로 변환한 결과입니다.
-    - symbol: 심볼 (BTC, ETH 등)
-    - quote_currency: 기준 통화 (KRW, USDT 등)
-    - timestamp: 현재 시각 (Unix timestamp milliseconds)
-    - asks: 매도 호가 리스트 [{"price": str, "size": str}, ...]
-    - bids: 매수 호가 리스트 [{"price": str, "size": str}, ...]
-    """
-    
-    symbol: str
-    quote_currency: str
-    timestamp: int
-    asks: list[OrderbookItem]
-    bids: list[OrderbookItem]
 
 
 class StandardTrade(TypedDict):
@@ -65,27 +34,26 @@ class StandardTrade(TypedDict):
     
     모든 거래소의 trade 데이터를 Upbit 형식으로 통일한 결과입니다.
     - code: 마켓 코드 ("KRW-BTC" 형식으로 통일)
-    - trade_timestamp: 체결 타임스탬프 (milliseconds)
+    - trade_timestamp: 체결 타임스탬프 (Unix Seconds, float)
     - trade_price: 체결 가격 (float)
     - trade_volume: 체결량 (float)
-    - ask_bid: 매수/매도 구분 ("ASK" or "BID")
+    - ask_bid: 매수/매도 구분 (1=BID, -1=ASK, 0=UNKNOWN)
     - sequential_id: 체결 고유 ID (문자열)
     """
     
     code: str
-    trade_timestamp: int
+    trade_timestamp: float
     trade_price: float
     trade_volume: float
-    ask_bid: str
+    ask_bid: int
     sequential_id: str
 
 
-OrderbookResponseData = dict[str, Any]
 TradeResponseData = dict[str, Any]
 TickerResponseData = dict[str, int | float]
 
 AsyncTradeType = Awaitable[
-    TickerResponseData | OrderbookResponseData | TradeResponseData | None
+    TickerResponseData | TradeResponseData | None
 ]
 
 # NOTE: 핸들러 맵에서 dict[str, Any] 사용 이유

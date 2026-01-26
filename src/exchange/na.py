@@ -1,14 +1,11 @@
-import asyncio
 from typing import Any, override
 
-from src.common.logger import PipelineLogger
 from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
 from src.core.connection.utils.parse import (
-    preprocess_na_orderbook_message,
     preprocess_na_trade_message,
     preprocess_ticker_message,
 )
-from src.core.types import OrderbookResponseData, TickerResponseData, TradeResponseData
+from src.core.types import TickerResponseData, TradeResponseData
 
 
 class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
@@ -27,9 +24,7 @@ class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
         super().__init__(*args, **kwargs)
         # heartbeat는 DI Container에서 주입됨
 
-        # 심볼별 bids/asks 누적 버퍼
-        self._orderbook_buffer: dict[str, dict[str, list]] = {}
-        self._buffer_lock = asyncio.Lock()
+
 
     @override
     async def websocket_connection(
@@ -37,46 +32,9 @@ class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
-        # orderbook 버퍼 플러시 태스크 시작 (5초마다)
-        asyncio.create_task(self._flush_orderbook_buffer_periodically())
         await super().websocket_connection(url, parameter_info, correlation_id)
 
-    async def _flush_orderbook_buffer_periodically(self) -> None:
-        """주기적으로 orderbook 버퍼를 플러시 (5초마다)"""
-        while True:
-            try:
-                await asyncio.sleep(5)
-                await self._flush_orderbook_buffer()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger = PipelineLogger.get_logger("websocket_handler", "connection")
-                logger.error(f"{self.scope.exchange}: Buffer flush error - {e}")
 
-    async def _flush_orderbook_buffer(self) -> None:
-        """누적된 orderbook 데이터를 배치로 전송"""
-        async with self._buffer_lock:
-            if not self._orderbook_buffer:
-                return
-
-            for symbol, data in self._orderbook_buffer.items():
-                if data["bids"] or data["asks"]:
-                    # 누적된 bids/asks를 하나의 메시지로 병합
-                    merged_message = {
-                        "symbol": symbol,
-                        "bids": data["bids"],
-                        "asks": data["asks"],
-                        "_preprocessed": True,
-                    }
-
-                    # 배치 수집기에 추가
-                    if self._batch_collector:
-                        await self._batch_collector.add_message(
-                            "orderbook", merged_message
-                        )
-
-            # 버퍼 초기화
-            self._orderbook_buffer.clear()
 
     @override
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
@@ -91,54 +49,7 @@ class CoinbaseWebsocketHandler(BaseGlobalWebsocketHandler):
 
         return await super().ticker_message(message)
 
-    @override
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        """OrderBook 메시지 처리 - Coinbase Exchange API
 
-        전략:
-        - snapshot: 초기 전체 오더북 → 무시 (불필요)
-        - l2update: 실시간 변경사항 → 배치 수집 후 전송
-        """
-        parsed_message = self._parse_message(message)
-        if not parsed_message:
-            return None
-
-        # Coinbase 시스템 메시지 필터링
-        if isinstance(parsed_message, dict):
-            # 구독 응답: {"type": "subscriptions", "channels": [...]}
-            msg_type: str = parsed_message.get("type", "")
-            if msg_type in ("subscriptions", "heartbeat", "error"):
-                if msg_type == "error":
-                    self._log_status(f"error: {parsed_message.get('message', '')}")
-                return None
-
-            # snapshot 메시지 필터링 (파서 호출 전에 필터링 필수!)
-            if msg_type == "snapshot":
-                return None
-
-        # 북미 거래소 OrderBook 파서 사용 → StandardOrderbookDTO (l2update만 처리)
-        preprocessed_dto = preprocess_na_orderbook_message(
-            parsed_message, self.projection
-        )
-
-        # Pydantic DTO를 dict로 변환
-        preprocessed_message = preprocessed_dto.model_dump()
-
-        # 심볼 추출
-        symbol = preprocessed_message.get("symbol", "UNKNOWN")
-        bids = preprocessed_message.get("bids", [])
-        asks = preprocessed_message.get("asks", [])
-
-        # 심볼별 버퍼에 bids/asks 누적 (병합)
-        async with self._buffer_lock:
-            if symbol not in self._orderbook_buffer:
-                self._orderbook_buffer[symbol] = {"bids": [], "asks": []}
-
-            self._orderbook_buffer[symbol]["bids"].extend(bids)
-            self._orderbook_buffer[symbol]["asks"].extend(asks)
-
-        # 버퍼에 누적만 하고 즉시 반환 (주기적으로 플러시됨)
-        return None
 
     @override
     async def trade_message(self, message: Any) -> TradeResponseData | None:
@@ -184,9 +95,7 @@ class KrakenWebsocketHandler(BaseGlobalWebsocketHandler):
         super().__init__(*args, **kwargs)
         # heartbeat는 DI Container에서 주입됨
 
-        # 심볼별 bids/asks 누적 버퍼
-        self._orderbook_buffer: dict[str, dict[str, list]] = {}
-        self._buffer_lock = asyncio.Lock()
+
 
     @override
     async def websocket_connection(
@@ -194,46 +103,7 @@ class KrakenWebsocketHandler(BaseGlobalWebsocketHandler):
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
-        # orderbook 버퍼 플러시 태스크 시작 (5초마다)
-        asyncio.create_task(self._flush_orderbook_buffer_periodically())
         await super().websocket_connection(url, parameter_info, correlation_id)
-
-    async def _flush_orderbook_buffer_periodically(self) -> None:
-        """주기적으로 orderbook 버퍼를 플러시 (5초마다)"""
-        while True:
-            try:
-                await asyncio.sleep(5)
-                await self._flush_orderbook_buffer()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger = PipelineLogger.get_logger("websocket_handler", "connection")
-                logger.error(f"{self.scope.exchange}: Buffer flush error - {e}")
-
-    async def _flush_orderbook_buffer(self) -> None:
-        """누적된 orderbook 데이터를 배치로 전송"""
-        async with self._buffer_lock:
-            if not self._orderbook_buffer:
-                return
-
-            for symbol, data in self._orderbook_buffer.items():
-                if data["bids"] or data["asks"]:
-                    # 누적된 bids/asks를 하나의 메시지로 병합
-                    merged_message = {
-                        "symbol": symbol,
-                        "bids": data["bids"],
-                        "asks": data["asks"],
-                        "_preprocessed": True,
-                    }
-
-                    # 배치 수집기에 추가
-                    if self._batch_collector:
-                        await self._batch_collector.add_message(
-                            "orderbook", merged_message
-                        )
-
-            # 버퍼 초기화
-            self._orderbook_buffer.clear()
 
     @override
     async def disconnect(self) -> None:
@@ -290,65 +160,7 @@ class KrakenWebsocketHandler(BaseGlobalWebsocketHandler):
 
         return await super().ticker_message(message)
 
-    @override
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        """OrderBook 메시지 처리 - Kraken v2
 
-        전략:
-        - snapshot: 초기 100개 price level → 무시 (불필요)
-        - update: 실시간 델타 (1~3개 price level) → 배치 수집 후 전송
-        """
-        parsed_message = self._parse_message(message)
-        if not parsed_message:
-            return None
-        # Kraken 시스템 메시지 필터링 (ticker_message와 동일)
-        if isinstance(parsed_message, dict):
-            # heartbeat 메시지
-            if parsed_message.get("channel") == "heartbeat":
-                return None
-
-            # 구독 성공 응답
-            if (
-                parsed_message.get("method") == "subscribe"
-                and parsed_message.get("success") is True
-            ):
-                self._log_status("subscribed")
-                return None
-
-            # result: success 패턴
-            if parsed_message.get("result") == "success":
-                self._log_status("subscribed")
-                return None
-            if parsed_message.get("channel") == "status":
-                return None
-
-        # snapshot 메시지 필터링 (파서 호출 전에 필터링 필수!)
-        msg_type = parsed_message.get("type", "")
-        if msg_type == "snapshot":
-            return None
-
-        # 북미 거래소 OrderBook 파서 사용 → StandardOrderbookDTO (update만 처리)
-        preprocessed_dto = preprocess_na_orderbook_message(
-            parsed_message, self.projection
-        )
-
-        # Pydantic DTO를 dict로 변환
-        preprocessed_message = preprocessed_dto.model_dump()
-        # 심볼 추출
-        symbol = preprocessed_message.get("symbol", "UNKNOWN")
-        bids = preprocessed_message.get("bids", [])
-        asks = preprocessed_message.get("asks", [])
-
-        # 심볼별 버퍼에 bids/asks 누적 (병합)
-        async with self._buffer_lock:
-            if symbol not in self._orderbook_buffer:
-                self._orderbook_buffer[symbol] = {"bids": [], "asks": []}
-
-            self._orderbook_buffer[symbol]["bids"].extend(bids)
-            self._orderbook_buffer[symbol]["asks"].extend(asks)
-
-        # 버퍼에 누적만 하고 즉시 반환 (주기적으로 플러시됨)
-        return None
 
     @override
     async def trade_message(self, message: Any) -> TradeResponseData | None:

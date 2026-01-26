@@ -8,7 +8,7 @@ import orjson
 
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
-from src.config.settings import websocket_settings
+from src.config.settings import kafka_settings, websocket_settings
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
@@ -16,12 +16,8 @@ from src.core.connection.utils.parse import preprocess_trade_message, update_dic
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     MessageHandler,
-    OrderbookResponseData,
     TickerResponseData,
     TradeResponseData,
-)
-from src.infra.messaging.connect.producers.realtime.orderbook import (
-    OrderbookDataProducer,
 )
 from src.infra.messaging.connect.producers.realtime.ticker import TickerDataProducer
 from src.infra.messaging.connect.producers.realtime.trade import TradeDataProducer
@@ -64,7 +60,6 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
         # 배치 수집기 및 프로듀서 (한국 거래소 특화 설정)
         self._batch_collector: RealtimeBatchCollector | None = None
         self._ticker_producer: TickerDataProducer | None = None
-        self._orderbook_producer: OrderbookDataProducer | None = None
         self._trade_producer: TradeDataProducer | None = None
         self._batch_enabled = True  # 배치 수집 활성화 플래그
 
@@ -158,14 +153,15 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             return
 
         try:
-            # 타입별 Producer 초기화 (Avro 지원)
+            # 타입별 Producer 초기화 (Avro 지원, Array Format 옵션 적용)
+            use_array_format = kafka_settings.use_array_format
             self._ticker_producer = TickerDataProducer(use_avro=True)
-            self._orderbook_producer = OrderbookDataProducer(use_avro=False)
-            self._trade_producer = TradeDataProducer(use_avro=False)
+            self._trade_producer = TradeDataProducer(
+                use_avro=False, use_array_format=use_array_format
+            )
 
             # Producer 시작
             await self._ticker_producer.start_producer()
-            await self._orderbook_producer.start_producer()
             await self._trade_producer.start_producer()
 
             # 배치 수집기 초기화 (한국 거래소 특화 설정)
@@ -175,10 +171,6 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
 
                 if request_type == "ticker" and self._ticker_producer:
                     return await self._ticker_producer.send_batch(
-                        scope=self.scope, batch=batch
-                    )
-                elif request_type == "orderbook" and self._orderbook_producer:
-                    return await self._orderbook_producer.send_batch(
                         scope=self.scope, batch=batch
                     )
                 elif request_type == "trade" and self._trade_producer:
@@ -224,9 +216,6 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
         if self._ticker_producer:
             await self._ticker_producer.stop_producer()
             self._ticker_producer = None
-        if self._orderbook_producer:
-            await self._orderbook_producer.stop_producer()
-            self._orderbook_producer = None
         if self._trade_producer:
             await self._trade_producer.stop_producer()
             self._trade_producer = None
@@ -320,83 +309,7 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             )
         return filtered_message
 
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        """오더북 메시지 처리 함수 (한국 거래소 배치 수집 지원)"""
-        # 자식 클래스에서 전처리된 메시지인지 확인
-        if isinstance(message, dict) and message.get("_preprocessed", False):
-            # 이미 전처리된 메시지 - 플래그만 제거하고 바로 배치 처리
-            filtered_message = message.copy()
-            filtered_message.pop("_preprocessed", None)
-        else:
-            # 기본 처리 (자식 클래스에서 오버라이드하지 않은 경우)
-            parsed_message = (
-                self._parse_message(message)
-                if not isinstance(message, dict)
-                else message
-            )
 
-            # 빈 메시지나 파싱 실패 시 무시
-            if not parsed_message:
-                return None
-
-            # 구독 확인 메시지 처리 (일부 거래소에서 사용)
-            rt = parsed_message.get("response_type", "")
-
-            # response_type이 존재하는 경우 - DATA가 아닌 모든 응답 메시지는 필터링
-            if rt:
-                logger.debug(f"{self.scope.exchange}: response_type={rt}")
-
-                if rt != "DATA":
-                    # SUBSCRIBED, CONNECTED, PING 등 non-data 메시지 처리
-                    if rt == "SUBSCRIBED":
-                        self._log_status("subscribed")
-                        logger.info(
-                            f"{self.scope.exchange}: Subscription confirmed (SUBSCRIBED)"
-                        )
-                        # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-                        await self._emit_connect_success_ack()
-                    elif rt == "CONNECTED":
-                        logger.debug(
-                            f"{self.scope.exchange}: Connection confirmed (CONNECTED)"
-                        )
-                    else:
-                        # 알려지지 않은 응답 타입 (PING, PONG 등)
-                        logger.debug(
-                            f"{self.scope.exchange}: Skipping non-data response: {rt}"
-                        )
-                    return None
-
-            # data_sub에 dictionary가 있으면 update_dict를 사용하여 병합
-            data_sub: dict | None = parsed_message.get("data", None)
-            if isinstance(data_sub, dict):
-                parsed_message = update_dict(parsed_message, "data")
-
-            # projection이 지정되면 해당 필드만 추출
-            fields: list[str] | None = self.projection
-            if fields:
-                filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
-            else:
-                filtered_message = parsed_message
-
-            logger.info(
-                f"{self.scope.exchange}: Using default processing (no child preprocessing)"
-            )
-
-        # 배치 수집기에 메시지 추가 (한국 거래소 특화)
-        if self._batch_enabled and self._batch_collector:
-            await self._batch_collector.add_message("orderbook", filtered_message)
-            logger.debug(
-                f"{self.scope.exchange}: Orderbook message added to batch collector"
-            )
-        else:
-            logger.warning(
-                f"""
-                {self.scope.exchange}: Batch collection disabled or not initialized
-                (enabled={self._batch_enabled}, collector={self._batch_collector is not None})
-                """
-            )
-
-        return filtered_message
 
     async def trade_message(self, message: Any) -> TradeResponseData | None:
         """체결 메시지 처리 함수 (한국 거래소 배치 수집 지원)"""
@@ -494,7 +407,6 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             # 메시지 타입별 핸들러 호출
             handler_map: MessageHandler = {
                 "ticker": self.ticker_message,
-                "orderbook": self.orderbook_message,
                 "trade": self.trade_message,
             }
             fn = handler_map.get(self.scope.request_type)

@@ -154,7 +154,7 @@ class CurrentBatchCollector:
             symbol_groups[msg.symbol].append(msg)
         
         # 각 심볼별 처리 (캐시 미스 시뮬레이션)
-        for symbol, messages in symbol_groups.items():
+        for _, messages in symbol_groups.items():
             # 심볼별 처리 (CPU 작업 시뮬레이션)
             await asyncio.sleep(0.0001 * len(messages))  # 100μs per message
 
@@ -371,22 +371,28 @@ def print_comparison(current: dict[str, Any], symbol_based: dict[str, Any]) -> N
         / current["cache_efficiency"] * 100
     )
     
-    print(f"\n📊 처리 속도:")
+    print("\n📊 처리 속도:")
     print(f"  현재 로직:     {current['avg_processing_time_per_batch']*1000:.2f}ms/batch")
     print(f"  변경 후 로직:  {symbol_based['avg_processing_time_per_batch']*1000:.2f}ms/batch")
-    print(f"  ⭐ 개선율:     {improvement_processing:.2f}x 빠름 ({(improvement_processing-1)*100:.1f}% 향상)")
+    print(
+        f"  ⭐ 개선율:     {improvement_processing:.2f}x 빠름 "
+        f"({(improvement_processing-1)*100:.1f}% 향상)"
+    )
     
-    print(f"\n📈 처리량:")
+    print("\n📈 처리량:")
     print(f"  현재 로직:     {current['messages_per_second']:,.0f} msg/s")
     print(f"  변경 후 로직:  {symbol_based['messages_per_second']:,.0f} msg/s")
-    print(f"  ⭐ 개선율:     {improvement_throughput:.2f}x ({(improvement_throughput-1)*100:.1f}% 향상)")
+    print(
+        f"  ⭐ 개선율:     {improvement_throughput:.2f}x "
+        f"({(improvement_throughput-1)*100:.1f}% 향상)"
+    )
     
-    print(f"\n💾 캐시 효율성:")
+    print("\n💾 캐시 효율성:")
     print(f"  현재 로직:     {current['cache_efficiency']*100:.1f}%")
     print(f"  변경 후 로직:  {symbol_based['cache_efficiency']*100:.1f}%")
     print(f"  ⭐ 개선:       +{improvement_cache:.1f}%p")
     
-    print(f"\n📦 배치 수:")
+    print("\n📦 배치 수:")
     print(f"  현재 로직:     {current['total_batches_sent']:,}개")
     print(f"  변경 후 로직:  {symbol_based['total_batches_sent']:,}개")
     
@@ -398,14 +404,14 @@ async def main():
     print("\n" + "=" * 80)
     print("배치 수집 성능 테스트")
     print("=" * 80)
-    print(f"\n테스트 설정:")
+    print("\n테스트 설정:")
     print(f"  총 메시지 수:     {TOTAL_MESSAGES:,}")
     print(f"  배치 크기:        {BATCH_SIZE}")
     print(f"  거래소 수:        {NUM_EXCHANGES}")
     print(f"  코인 수/거래소:   {SYMBOLS_PER_EXCHANGE}")
     
     # 메시지 생성
-    print(f"\n메시지 생성 중...")
+    print("\n메시지 생성 중...")
     messages = generate_realistic_messages(TOTAL_MESSAGES)
     print(f"  ✓ {len(messages):,}개 메시지 생성 완료")
     
@@ -414,7 +420,7 @@ async def main():
     for msg in messages:
         symbol_counts[msg.symbol] += 1
     
-    print(f"\n심볼별 메시지 분포 (Top 5):")
+    print("\n심볼별 메시지 분포 (Top 5):")
     for symbol, count in sorted(symbol_counts.items(), key=lambda x: x[1], reverse=True)[:5]:
         print(f"  {symbol:8s}: {count:5,}개 ({count/len(messages)*100:5.1f}%)")
     

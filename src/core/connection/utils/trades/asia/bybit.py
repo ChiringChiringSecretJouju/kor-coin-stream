@@ -13,7 +13,13 @@ class BybitTradeParser(TradeParser):
 
     특징:
     - v5 통합 API
-    - {"topic": "publicTrade.BTCUSDT", "data": [{"T": ..., "s": "BTCUSDT", "S": "Buy", "v": "0.001", "p": "16578.50", "i": "..."}]}
+    - {
+        "topic": "publicTrade.BTCUSDT",
+        "data": [{
+            "T": ..., "s": "BTCUSDT", "S": "Buy",
+            "v": "0.001", "p": "16578.50", "i": "..."
+        }]
+    }
     - S: "Buy" or "Sell"
     - data는 배열 (여러 거래 포함 가능)
     """
@@ -55,10 +61,10 @@ class BybitTradeParser(TradeParser):
             # 빈 데이터는 기본값 반환 (에러 방지)
             return StandardTradeDTO(
                 code="UNKNOWN",
-                trade_timestamp=0,
+                trade_timestamp=0.0,
                 trade_price=0.0,
                 trade_volume=0.0,
-                ask_bid="BID",
+                ask_bid=1,
                 sequential_id="0",
             )
 
@@ -70,7 +76,7 @@ class BybitTradeParser(TradeParser):
 
         # Side 변환: "Buy" → BID, "Sell" → ASK
         side_raw = trade.get("S", "Buy")
-        side = "BID" if side_raw.lower() == "buy" else "ASK"
+        side = 1 if side_raw.lower() == "buy" else -1
 
         # 가격/수량
         price_str = trade.get("p", "0")
@@ -78,7 +84,7 @@ class BybitTradeParser(TradeParser):
 
         return StandardTradeDTO(
             code=code,
-            trade_timestamp=trade.get("T", 0),
+            trade_timestamp=float(trade.get("T", 0)) / 1000.0,
             trade_price=float(price_str),
             trade_volume=float(volume_str),
             ask_bid=side,

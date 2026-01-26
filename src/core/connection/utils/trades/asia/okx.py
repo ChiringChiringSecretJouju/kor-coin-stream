@@ -49,10 +49,10 @@ class OKXTradeParser(TradeParser):
         if not data:
             return StandardTradeDTO(
                 code="UNKNOWN",
-                trade_timestamp=0,
+                trade_timestamp=0.0,
                 trade_price=0.0,
                 trade_volume=0.0,
-                ask_bid="BID",
+                ask_bid=1,
                 sequential_id="0",
             )
 
@@ -63,7 +63,7 @@ class OKXTradeParser(TradeParser):
 
         # Side 변환: "buy" → BID, "sell" → ASK
         side_raw = trade.get("side", "buy")
-        side = "BID" if side_raw.lower() == "buy" else "ASK"
+        side = 1 if side_raw.lower() == "buy" else -1
 
         # px, sz는 문자열
         price_str = trade.get("px", "0")
@@ -71,11 +71,11 @@ class OKXTradeParser(TradeParser):
 
         # ts는 문자열 (밀리초)
         ts_str = trade.get("ts", "0")
-        timestamp = int(ts_str) if ts_str.isdigit() else 0
+        timestamp = float(ts_str) if ts_str.isdigit() else 0.0
 
         return StandardTradeDTO(
             code=code,
-            trade_timestamp=timestamp,
+            trade_timestamp=timestamp / 1000.0,
             trade_price=float(price_str),
             trade_volume=float(size_str),
             ask_bid=side,

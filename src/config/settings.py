@@ -68,6 +68,18 @@ def yaml_settings(prefix: str) -> SettingsConfigDict:
 # YAML에서 기본값 자동 로드 + 환경변수 오버라이드
 
 
+class AppSettings(BaseSettings):
+    """애플리케이션 일반 설정
+
+    환경변수 오버라이드:
+        APP_ENV: 실행 환경 (dev, prod, test) (기본: dev)
+    """
+    environment: str = "dev"
+    debug: bool = False
+
+    model_config = yaml_settings("APP_")
+
+
 class KafkaSettings(BaseSettings):
     """Kafka 설정 (환경변수 기반)
 
@@ -99,7 +111,9 @@ class KafkaSettings(BaseSettings):
     compression_type: str | None = None  # 선택사항
     batch_size: int | None = None  # 선택사항
     schema_register: str = "http://localhost:8082"
-
+    use_array_format: bool = False  # Array-Format 직렬화 사용 여부
+    
+    # Kafka 설정은 KAFKA_ prefix를 사용하지만, Global 설정에 포함될 수 있음
     model_config = yaml_settings("KAFKA_")
 
 
@@ -171,6 +185,7 @@ class MetricsSettings(BaseSettings):
 # ========================================
 # 환경변수 로드 (환경변수 없으면 기본값 사용)
 
+app_settings = AppSettings()
 kafka_settings = KafkaSettings()
 redis_settings = RedisSettings()
 websocket_settings = WebsocketSettings()

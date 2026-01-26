@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Iterable
 
 from src.common.exceptions.error_dispatcher import dispatch_error

@@ -45,9 +45,9 @@ class BithumbTradeParser(TradeParser):
         """
         return StandardTradeDTO(
             code=message["code"],
-            trade_timestamp=message["trade_timestamp"],
+            trade_timestamp=float(message["trade_timestamp"]) / 1000.0,
             trade_price=float(message["trade_price"]),
             trade_volume=float(message["trade_volume"]),
-            ask_bid=message["ask_bid"],
+            ask_bid=1 if message["ask_bid"] == "BID" else -1,
             sequential_id=str(message["sequential_id"]),
         )

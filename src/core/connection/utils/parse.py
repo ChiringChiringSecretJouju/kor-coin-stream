@@ -8,9 +8,6 @@ from typing import Any
 
 from src.core.connection._utils import parse_symbol_pair
 from src.core.connection.utils.dict_utils import update_dict
-from src.core.connection.utils.orderbooks.asia import get_asia_orderbook_dispatcher
-from src.core.connection.utils.orderbooks.korea import get_korea_orderbook_dispatcher
-from src.core.connection.utils.orderbooks.na import get_na_orderbook_dispatcher
 from src.core.connection.utils.timestamp import (
     get_regional_datetime,
     get_regional_timestamp_ms,
@@ -18,7 +15,7 @@ from src.core.connection.utils.timestamp import (
 from src.core.connection.utils.trades.asia import get_asia_trade_dispatcher
 from src.core.connection.utils.trades.korea import get_korea_trade_dispatcher
 from src.core.connection.utils.trades.na import get_na_trade_dispatcher
-from src.core.dto.io.realtime import StandardOrderbookDTO, StandardTradeDTO
+from src.core.dto.io.realtime import StandardTradeDTO
 
 # Re-export for backward compatibility
 __all__ = [
@@ -26,10 +23,7 @@ __all__ = [
     "get_regional_datetime",
     "update_dict",
     "preprocess_ticker_message",
-    "preprocess_orderbook_message",
     "preprocess_trade_message",
-    "preprocess_asia_orderbook_message",
-    "preprocess_na_orderbook_message",
     "preprocess_asia_trade_message",
     "preprocess_na_trade_message",
 ]
@@ -141,30 +135,6 @@ def preprocess_ticker_message(
     return standardized_message
 
 
-def preprocess_orderbook_message(
-    parsed_message: dict[str, Any], projection: list[str] | None
-) -> StandardOrderbookDTO:
-    """Orderbook 메시지 전처리 (새로운 파서 시스템 사용).
-
-    표준 포맷:
-        StandardOrderbookDTO {
-            symbol: str,              # 심볼 (BTC, ETH 등)
-            quote_currency: str,      # 기준 통화 (KRW, USDT 등)
-            timestamp: int,           # 현재 시각 (ms)
-            asks: [OrderbookItemDTO, ...],
-            bids: [OrderbookItemDTO, ...]
-        }
-
-    Args:
-        parsed_message: 원본 메시지
-        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
-
-    Returns:
-        표준화된 orderbook (Pydantic DTO)
-    """
-    # 디스패처로 자동 파싱
-    dispatcher = get_korea_orderbook_dispatcher()
-    return dispatcher.parse(parsed_message)
 
 
 def preprocess_trade_message(
@@ -176,12 +146,12 @@ def preprocess_trade_message(
 
     표준 포맷:
         StandardTradeDTO {
-            code: str,               # 마켓 코드 ("KRW-BTC" 형식)
-            trade_timestamp: int,    # 체결 타임스탬프 (milliseconds)
-            trade_price: float,      # 체결 가격
-            trade_volume: float,     # 체결량
-            ask_bid: "ASK" | "BID",  # 매수/매도 구분
-            sequential_id: str       # 체결 고유 ID
+            code: str,                  # 마켓 코드 ("KRW-BTC" 형식)
+            trade_timestamp: float,     # 체결 타임스탬프 (Unix Seconds, float)
+            trade_price: float,         # 체결 가격
+            trade_volume: float,        # 체결량
+            ask_bid: 1 | -1 | 0,        # 매수/매도 구분 (1=BID, -1=ASK, 0=UNKNOWN)
+            sequential_id: str          # 체결 고유 ID
         }
 
     Args:
@@ -196,40 +166,8 @@ def preprocess_trade_message(
     return dispatcher.parse(parsed_message)
 
 
-def preprocess_asia_orderbook_message(
-    parsed_message: dict[str, Any], projection: list[str] | None
-) -> StandardOrderbookDTO:
-    """Orderbook 메시지 전처리 (새로운 파서 시스템 사용 - 아시아 거래소).
-
-    아시아 거래소(Binance, Bybit, Huobi, OKX)의 Orderbook 데이터를 표준 포맷으로 통일합니다.
-
-    Args:
-        parsed_message: 원본 메시지
-        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
-
-    Returns:
-        표준화된 orderbook (Pydantic DTO)
-    """
-    dispatcher = get_asia_orderbook_dispatcher()
-    return dispatcher.parse(parsed_message)
 
 
-def preprocess_na_orderbook_message(
-    parsed_message: dict[str, Any], projection: list[str] | None
-) -> StandardOrderbookDTO:
-    """Orderbook 메시지 전처리 (새로운 파서 시스템 사용 - 북미 거래소).
-
-    북미 거래소(Coinbase, Kraken)의 Orderbook 데이터를 표준 포맷으로 통일합니다.
-
-    Args:
-        parsed_message: 원본 메시지
-        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
-
-    Returns:
-        표준화된 orderbook (Pydantic DTO)
-    """
-    dispatcher = get_na_orderbook_dispatcher()
-    return dispatcher.parse(parsed_message)
 
 
 def preprocess_asia_trade_message(

@@ -3,13 +3,11 @@ from typing import Any, override
 from src.common.logger import PipelineLogger
 from src.core.connection.handlers.korea_handler import BaseKoreaWebsocketHandler
 from src.core.connection.utils.parse import (
-    preprocess_orderbook_message,
     preprocess_ticker_message,
     # preprocess_trade_message,  # Trade 메시지 처리 시 사용
     update_dict,
 )
 from src.core.types import (
-    OrderbookResponseData,
     TickerResponseData,
 )
 
@@ -55,20 +53,7 @@ class UpbitWebsocketHandler(BaseKoreaWebsocketHandler):
         # 공통 처리는 부모 클래스에 위임 (단, 이미 전처리된 메시지 전달)
         return await super().ticker_message(preprocessed_message)
 
-    @override
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        parsed_message = self._parse_message(message)
-        if not parsed_message:
-            return None
 
-        # 업비트 전용 전처리 (한국 거래소 OrderBook 파서 사용)
-        # → StandardOrderbookDTO (Pydantic DTO)
-        preprocessed_dto = preprocess_orderbook_message(parsed_message, self.projection)
-
-        # Pydantic DTO를 dict로 변환 후 _preprocessed 플래그 추가
-        preprocessed_message = preprocessed_dto.model_dump()
-        preprocessed_message["_preprocessed"] = True
-        return await super().orderbook_message(preprocessed_message)
 
 
 class BithumbWebsocketHandler(BaseKoreaWebsocketHandler):
@@ -110,19 +95,7 @@ class BithumbWebsocketHandler(BaseKoreaWebsocketHandler):
         # 공통 처리는 부모 클래스에 위임 (단, 이미 전처리된 메시지 전달)
         return await super().ticker_message(preprocessed_message)
 
-    @override
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        parsed_message = self._parse_message(message)
-        if not parsed_message:
-            return None
 
-        # 빗썸 전용 전처리 (orderbook_units → asks/bids 분리)
-        preprocessed_dto = preprocess_orderbook_message(parsed_message, self.projection)
-
-        # Pydantic DTO를 dict로 변환 후 _preprocessed 플래그 추가
-        preprocessed_message = preprocessed_dto.model_dump()
-        preprocessed_message["_preprocessed"] = True
-        return await super().orderbook_message(preprocessed_message)
 
 
 class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
@@ -171,31 +144,7 @@ class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
         # 공통 처리는 부모 클래스에 위임 (단, 이미 전처리된 메시지 전달)
         return await super().ticker_message(preprocessed_message)
 
-    @override
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        parsed_message = self._parse_message(message)
-        if not parsed_message:
-            return None
 
-        # Coinone 시스템 메시지 필터링 (orderbook 데이터가 아님)
-        rt: str = parsed_message.get("response_type", "")
-        if rt in ("SUBSCRIBED", "CONNECTED", "PONG"):
-            return None
-
-        data_sub: dict | None = parsed_message.get("data", None)
-        if isinstance(data_sub, dict):
-            # data 필드를 최상위로 병합
-            merged_message = update_dict(parsed_message, "data")
-        else:
-            merged_message = parsed_message
-
-        # 코인원 전용 전처리 (이미 asks/bids 구조)
-        preprocessed_dto = preprocess_orderbook_message(merged_message, self.projection)
-
-        # Pydantic DTO를 dict로 변환 후 _preprocessed 플래그 추가
-        preprocessed_message = preprocessed_dto.model_dump()
-        preprocessed_message["_preprocessed"] = True
-        return await super().orderbook_message(preprocessed_message)
 
 
 class KorbitWebsocketHandler(BaseKoreaWebsocketHandler):
@@ -240,23 +189,4 @@ class KorbitWebsocketHandler(BaseKoreaWebsocketHandler):
         # 공통 처리는 부모 클래스에 위임 (단, 이미 전처리된 메시지 전달)
         return await super().ticker_message(preprocessed_message)
 
-    @override
-    async def orderbook_message(self, message: Any) -> OrderbookResponseData | None:
-        parsed_message = self._parse_message(message)
-        if not parsed_message:
-            return None
 
-        data_sub: dict | None = parsed_message.get("data", None)
-        if isinstance(data_sub, dict):
-            # data 필드를 최상위로 병합
-            merged_message = update_dict(parsed_message, "data")
-        else:
-            merged_message = parsed_message
-
-        # 코빗 전용 전처리 (이미 asks/bids 구조, data 내부)
-        preprocessed_dto = preprocess_orderbook_message(merged_message, self.projection)
-
-        # Pydantic DTO를 dict로 변환 후 _preprocessed 플래그 추가
-        preprocessed_message = preprocessed_dto.model_dump()
-        preprocessed_message["_preprocessed"] = True
-        return await super().orderbook_message(preprocessed_message)

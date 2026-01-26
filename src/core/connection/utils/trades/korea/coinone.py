@@ -68,11 +68,11 @@ class CoinoneTradeParser(TradeParser):
         # is_seller_maker=True → 판매자가 Maker → 실제 체결은 매도(ASK)
         # is_seller_maker=False → 구매자가 Maker → 실제 체결은 매수(BID)
         is_seller_maker: bool = flattened.get("is_seller_maker", False)
-        ask_bid = "ASK" if is_seller_maker else "BID"
+        ask_bid = -1 if is_seller_maker else 1
         
         return StandardTradeDTO(
             code=code,
-            trade_timestamp=int(flattened["timestamp"]),
+            trade_timestamp=float(flattened["timestamp"]) / 1000.0,
             trade_price=float(flattened["price"]),
             trade_volume=float(flattened["qty"]),
             ask_bid=ask_bid,

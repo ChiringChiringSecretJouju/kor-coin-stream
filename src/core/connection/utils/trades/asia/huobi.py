@@ -12,7 +12,15 @@ class HuobiTradeParser(TradeParser):
     """Huobi Spot Trade 파서.
     
     특징:
-    - {"ch": "market.btcusdt.trade.detail", "tick": {"data": [{"price": ..., "amount": ..., "ts": ..., "tradeId": ..., "direction": "buy"}]}}
+    - {
+        "ch": "market.btcusdt.trade.detail",
+        "tick": {
+            "data": [{
+                "price": ..., "amount": ..., "ts": ...,
+                "tradeId": ..., "direction": "buy"
+            }]
+        }
+    }
     - direction: "buy" or "sell"
     - tick.data는 배열
     """
@@ -63,10 +71,10 @@ class HuobiTradeParser(TradeParser):
         if not data:
             return StandardTradeDTO(
                 code=code or "UNKNOWN",
-                trade_timestamp=0,
+                trade_timestamp=0.0,
                 trade_price=0.0,
                 trade_volume=0.0,
-                ask_bid="BID",
+                ask_bid=1,
                 sequential_id="0",
             )
         
@@ -74,11 +82,11 @@ class HuobiTradeParser(TradeParser):
         
         # Side 변환: "buy" → BID, "sell" → ASK
         direction = trade.get("direction", "buy")
-        side = "BID" if direction.lower() == "buy" else "ASK"
+        side = 1 if direction.lower() == "buy" else -1
         
         return StandardTradeDTO(
             code=code,
-            trade_timestamp=trade.get("ts", 0),
+            trade_timestamp=float(trade.get("ts", 0)) / 1000.0,
             trade_price=float(trade.get("price", 0)),
             trade_volume=float(trade.get("amount", 0)),
             ask_bid=side,

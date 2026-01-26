@@ -5,6 +5,7 @@ import contextlib
 from abc import ABC, abstractmethod
 from typing import Any, Literal, cast
 
+import orjson
 import websockets
 
 from src.common.exceptions.exception_rule import SOCKET_EXCEPTIONS
@@ -18,7 +19,10 @@ from src.core.connection.emitters.connect_success_ack_emitter import (
 from src.core.connection.error_handler import ConnectionErrorHandler
 from src.core.connection.health_monitor import ConnectionHealthMonitor
 from src.core.connection.services.backoff import compute_next_backoff
-from src.core.connection.subscription_manager import SubscriptionManager
+from src.core.connection.utils.subscription import (
+    extract_subscription_symbols,
+    merge_subscription_params,
+)
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
 from src.core.dto.internal.metrics import (
     ProcessingMetricsDomain,
@@ -75,7 +79,9 @@ class BaseWebsocketHandler(ABC):
         self._current_websocket = None
 
         # 컴포넌트 초기화
-        self._subscription_manager = SubscriptionManager(self.scope)
+        # self._subscription_manager 제거됨 -> 핸들러 직접 관리
+        self._last_socket_params: dict[str, Any] | list[Any] | None = None
+        
         self._health_monitor = ConnectionHealthMonitor(self.scope, self.policy)
         self._error_handler = ConnectionErrorHandler(self.scope)
 
@@ -96,6 +102,7 @@ class BaseWebsocketHandler(ABC):
         self._stop_requested: bool = False
         self._max_reconnect_attempts: int = websocket_settings.reconnect_max_attempts
         self._backoff_task: asyncio.Task[None] | None = None
+        self._last_backoff: float = 0.0  # Decorrelated Jitter용 이전 상태
         self._current_correlation_id: str | None = None
 
         # 3개의 독립 emit_factory (Layer별 독립 전송)
@@ -163,8 +170,10 @@ class BaseWebsocketHandler(ABC):
     async def _sending_socket_parameter(
         self, params: dict[str, Any] | list[Any]
     ) -> str | bytes:
-        """구독 메시지 준비 (구독 매니저로 위임)"""
-        return await self._subscription_manager.prepare_subscription_message(params)
+        """구독 메시지 준비 (orjson 직렬화 직접 수행)"""
+        if not params:
+            return ""
+        return orjson.dumps(params).decode("utf-8")
 
     @abstractmethod
     async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
@@ -174,28 +183,65 @@ class BaseWebsocketHandler(ABC):
     async def update_subscription(
         self, symbols: list[str], subscribe_type: str | None = None
     ) -> None:
-        """실행 중 구독 심볼을 갱신합니다 (구독 매니저로 위임)"""
-        success = await self._subscription_manager.update_subscription(
-            self._current_websocket, symbols, subscribe_type
-        )
-        if not success:
-            # 실패 시 에러 발행
-            await self._error_handler.emit_subscription_error(
-                RuntimeError("구독 업데이트 실패"),
-                symbols=symbols,
-                correlation_id=self._current_correlation_id,
+        """실행 중 구독 심볼을 동적으로 추가합니다 (Zero-Downtime).
+        
+        Algorithm:
+            1. State Update: 현재 파라미터(_last_socket_params)에 새 심볼 병합.
+            2. Check State: 연결된 상태라면 즉시 구독 메시지 전송.
+            3. Recovery: 연결 끊긴 상태라도 1번에서 상태가 갱신되었으므로 재연결 시 반영됨.
+        """
+        if not symbols or not self._last_socket_params:
+            return
+
+        # 1. State Update (Merge)
+        try:
+            merged_params = merge_subscription_params(self._last_socket_params, symbols)
+            # 만약 subscribe_type이 주어졌다면 업데이트 (일부 거래소용)
+            if subscribe_type and isinstance(merged_params, dict):
+                merged_params["subscribe_type"] = subscribe_type
+                
+            self._last_socket_params = merged_params
+            logger.info(f"{self.scope.exchange}: Subscription params merged with {symbols}")
+        except Exception as e:
+            logger.warning(f"{self.scope.exchange}: Merge params failed - {e}")
+            return
+
+        # 2. Check State & Send
+        websocket = self._current_websocket
+        if websocket and not getattr(websocket, "closed", True):
+            try:
+                # 변경된 전체 파라미터를 다시 전송 (Overwrite Strategy)
+                # 대부분의 거래소는 추가 구독 시 전체 리스트를 보내도 안전함
+                msg = await self._sending_socket_parameter(self._last_socket_params)
+                await websocket.send(msg)
+                logger.info(f"{self.scope.exchange}: Dynamic subscription sent")
+            except Exception as e:
+                logger.warning(
+                    f"{self.scope.exchange}: Dynamic subscription send failed - {e}"
+                )
+        else:
+            logger.info(
+                f"{self.scope.exchange}: Not connected, params updated for next connection"
             )
 
     async def update_subscription_raw(self, params: dict[str, Any] | list[Any]) -> None:
-        """원본 파라미터를 그대로 재전송하여 재구독합니다 (구독 매니저로 위임)"""
-        success = await self._subscription_manager.update_subscription_raw(
-            self._current_websocket, params
-        )
-        if not success:
-            # 실패 시 에러 발행
+        """원본 파라미터를 그대로 재전송하여 재구독합니다."""
+        websocket = self._current_websocket
+        if websocket is None or getattr(websocket, "closed", True):
+            logger.warning(f"{self.scope.exchange}: 활성 소켓 없음, 재구독(raw) 무시")
+            return
+
+        try:
+            msg = await self._sending_socket_parameter(params)
+            await websocket.send(msg)
+            # 상태 업데이트
+            self._last_socket_params = params
+            logger.info(f"{self.scope.exchange}: 재구독(raw) 메시지 전송 완료")
+        except Exception as e:
+            logger.warning(f"{self.scope.exchange}: 재구독(raw) 전송 실패 - {e}")
             await self._error_handler.emit_subscription_error(
-                RuntimeError("원본 구독 업데이트 실패"),
-                symbols=params.get("symbols") if isinstance(params, dict) else None,
+                e,
+                symbols=None, # raw params라 심볼 목록을 바로 알기 어려움 (추출 필요 시 유틸 사용)
             )
 
     async def _batch_flush(self) -> None:
@@ -270,6 +316,7 @@ class BaseWebsocketHandler(ABC):
                     attempt = 0  # 성공적으로 연결되었으므로 백오프 시도횟수 리셋
                     self._stop_requested = False
                     self._ack_sent = False
+                    self._last_backoff = 0.0  # 성공 시 백오프 상태 리셋
                     # 재연결 시 캐시 초기화
                     self._cached_symbols.clear()
 
@@ -281,9 +328,9 @@ class BaseWebsocketHandler(ABC):
                         self._backpressure_producer, enable_periodic_monitoring=True
                     )
 
-                    # 현재 연결 보관 및 구독 매니저에 파라미터 등록
+                    # 현재 연결 보관 및 파라미터 상태 저장
                     self._current_websocket = websocket
-                    self._subscription_manager.update_current_params(socket_parameters)
+                    self._last_socket_params = socket_parameters
 
                     # 구독 파라미터 전송
                     subscription_message: str | bytes = (
@@ -326,7 +373,13 @@ class BaseWebsocketHandler(ABC):
                     f"{self.scope.exchange}: 연결이 끊겼습니다. 재시도합니다. 이유: {e}"
                 )
                 attempt += 1
-                backoff_delay = compute_next_backoff(self.policy, attempt - 1)
+                
+                # Smart Backoff (Decorrelated Jitter + Circuit Breaker)
+                backoff_delay = compute_next_backoff(
+                    self.policy, attempt - 1, self._last_backoff
+                )
+                self._last_backoff = backoff_delay  # 다음 계산을 위해 저장
+
                 # ws 경계 예외를 에러 토픽으로 발행
                 await self._error_handler.emit_connection_error(
                     e,
@@ -378,7 +431,13 @@ class BaseWebsocketHandler(ABC):
                     f"{self.scope.exchange}: unexpected error in connection loop - {e}"
                 )
                 attempt += 1
-                backoff_delay = compute_next_backoff(self.policy, attempt - 1)
+
+                # Smart Backoff (Decorrelated Jitter + Circuit Breaker)
+                backoff_delay = compute_next_backoff(
+                    self.policy, attempt - 1, self._last_backoff
+                )
+                self._last_backoff = backoff_delay
+
                 await self._error_handler.emit_ws_error(
                     e,
                     observed_key=f"url:{url}:unexpected",
@@ -479,12 +538,18 @@ class BaseWebsocketHandler(ABC):
 
         # socket_parameters에서 심볼 추출 시도
         try:
-            symbols = self._subscription_manager.effective_symbols()
-            logger.info(
-                f"{self.scope.exchange}: Extracted symbols from socket_parameters: {symbols}"
-            )
-        except Exception:
-            symbols = self._subscription_manager.current_symbols or []
+            # 상태로 저장된 마지막 파라미터 사용
+            params = self._last_socket_params
+            if params:
+                symbols = extract_subscription_symbols(params)
+                logger.info(
+                    f"{self.scope.exchange}: Extracted symbols from params: {symbols}"
+                )
+            else:
+                symbols = []
+        except Exception as e:
+            logger.warning(f"{self.scope.exchange}: 심볼 추출 실패 - {e}")
+            symbols = []
         
         if not symbols:
             # 추출 실패 → 실제 데이터 메시지에서 점진적으로 추출

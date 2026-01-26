@@ -61,11 +61,11 @@ async def example_with_monitoring():
     print("\n시나리오 2: 상태 갱신 (100회 반복)")
     print("-" * 80)
 
-    for i in range(100):
+    for _ in range(100):
         async with monitor.track("update_connection_state"):
             await cache.update_connection_state(CONNECTION_STATUS_CONNECTED, ttl=3600)
 
-    print(f"✓ 상태 갱신 100회 완료")
+    print("✓ 상태 갱신 100회 완료")
 
     # 3. 심볼 교체 (Lua 스크립트, 모니터링 적용)
     print("\n시나리오 3: 심볼 교체 (100회 반복)")
@@ -76,17 +76,18 @@ async def example_with_monitoring():
         async with monitor.track("replace_symbols"):
             await cache.replace_symbols(symbols, ttl=3600)
 
-    print(f"✓ 심볼 교체 100회 완료")
+    print("✓ 심볼 교체 100회 완료")
 
     # 4. 상태 조회 (모니터링 적용)
     print("\n시나리오 4: 상태 조회 (50회 반복)")
     print("-" * 80)
 
-    for i in range(50):
+    for _ in range(50):
         async with monitor.track("check_connection_exists"):
-            result = await cache.check_connection_exists()
+            await cache.check_connection_exists()
 
-    print(f"✓ 상태 조회 50회 완료")
+    print("✓ 상태 조회 50회 완료")
+
 
     # 5. 통계 조회 및 출력
     print("\n" + "=" * 80)
@@ -102,7 +103,7 @@ async def example_with_monitoring():
         print(f"  에러:            {stats.error_count}회")
         print(f"  에러율:          {stats.error_rate:.2%}")
         print(f"  처리량:          {stats.ops_per_sec:.0f} ops/sec (최근 1분)")
-        print(f"  지연시간:")
+        print("  지연시간:")
         print(f"    P50:           {stats.p50:.2f} ms")
         print(f"    P95:           {stats.p95:.2f} ms")
         print(f"    P99:           {stats.p99:.2f} ms")
@@ -147,7 +148,7 @@ async def example_error_tracking():
 
     # 의도적 에러 발생
     print("\n의도적 에러 10회 발생 중...")
-    for i in range(10):
+    for _ in range(10):
         try:
             async with monitor.track("intentional_error"):
                 # 존재하지 않는 키 접근 (에러 유발)
@@ -158,7 +159,7 @@ async def example_error_tracking():
 
     # 정상 연산
     print("정상 연산 90회 실행 중...")
-    for i in range(90):
+    for _ in range(90):
         async with monitor.track("intentional_error"):
             client = manager.client
             await client.set("test_key", "test_value", ex=10)
@@ -166,7 +167,7 @@ async def example_error_tracking():
     # 통계 확인
     stats = monitor.get_stats("intentional_error")
     if stats:
-        print(f"\n📊 에러 추적 결과:")
+        print("\n📊 에러 추적 결과:")
         print(f"  총 호출:    {stats.total_count}회")
         print(f"  성공:       {stats.success_count}회")
         print(f"  에러:       {stats.error_count}회")

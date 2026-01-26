@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from src.core.connection.utils.parsers.base import TradeParser
@@ -13,7 +12,14 @@ class KrakenTradeParser(TradeParser):
     """Kraken v2 Trade 파서.
     
     특징:
-    - {"channel": "trade", "type": "update", "data": [{"symbol": "MATIC/USD", "side": "sell", "price": 0.5117, "qty": 40.0, "trade_id": 4665906, "timestamp": "2023-09-25T07:49:37.708706Z"}]}
+    - {
+        "channel": "trade", "type": "update",
+        "data": [{
+            "symbol": "MATIC/USD", "side": "sell", "price": 0.5117,
+            "qty": 40.0, "trade_id": 4665906,
+            "timestamp": "2023-09-25T07:49:37.708706Z"
+        }]
+    }
     - side: "buy" or "sell"
     - timestamp: ISO 8601 형식
     - price, qty: 숫자 타입
@@ -59,9 +65,9 @@ class KrakenTradeParser(TradeParser):
         
         # Side 변환: "buy" → BID, "sell" → ASK
         side_raw = trade.get("side", "buy")
-        side = "BID" if side_raw.lower() == "buy" else "ASK"
+        side = 1 if side_raw.lower() == "buy" else -1
         
-        # ISO 8601 → Unix timestamp (밀리초)
+        # ISO 8601 → Unix timestamp (float seconds)
         timestamp_str = trade.get("timestamp", "")
         timestamp = self._parse_iso_timestamp(timestamp_str)
         
@@ -74,31 +80,32 @@ class KrakenTradeParser(TradeParser):
             sequential_id=str(trade.get("trade_id", "")),
         )
     
-    def _parse_iso_timestamp(self, time_str: str) -> int:
-        """ISO 8601 문자열을 Unix timestamp (밀리초)로 변환.
+    def _parse_iso_timestamp(self, time_str: str) -> float:
+        """ISO 8601 문자열을 Unix timestamp (Seconds, float)로 변환.
         
         Args:
             time_str: "2023-09-25T07:49:37.708706Z"
         
         Returns:
-            Unix timestamp (밀리초)
+            Unix timestamp (Seconds, float)
         """
         if not time_str:
-            return 0
+            return 0.0
         
         try:
+            from datetime import datetime
             dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
-            return int(dt.timestamp() * 1000)
-        except (ValueError, AttributeError):
-            return 0
+            return dt.timestamp()
+        except (ValueError, AttributeError, ImportError):
+            return 0.0
     
     def _create_empty_trade(self) -> StandardTradeDTO:
         """빈 Trade DTO 생성."""
         return StandardTradeDTO(
             code="UNKNOWN",
-            trade_timestamp=0,
+            trade_timestamp=0.0,
             trade_price=0.0,
             trade_volume=0.0,
-            ask_bid="BID",
+            ask_bid=1,
             sequential_id="0",
         )

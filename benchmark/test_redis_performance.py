@@ -96,7 +96,7 @@ async def benchmark_state_update_latency(
         BenchmarkResult
     """
     print(f"\n{'='*80}")
-    print(f"테스트 1: 상태 갱신 지연시간 (목표: P99 < 15ms)")
+    print("테스트 1: 상태 갱신 지연시간 (목표: P99 < 15ms)")
     print(f"{'='*80}")
     print(f"동시 연결 수: {num_connections:,}")
 
@@ -129,7 +129,7 @@ async def benchmark_state_update_latency(
         print(f"✓ {num_connections:,}개 연결 초기화 완료")
 
         # 상태 갱신 벤치마크 (CONNECTING → CONNECTED)
-        print(f"⏱️  상태 갱신 중...")
+        print("⏱️  상태 갱신 중...")
         start_time = time.perf_counter()
 
         async def update_and_measure(cache: WebsocketConnectionCache) -> float:
@@ -159,16 +159,17 @@ async def benchmark_state_update_latency(
 
         # 결과 출력
         print(f"\n{'─'*80}")
-        print(f"📊 결과:")
+        print("📊 결과:")
         print(f"{'─'*80}")
         print(f"총 연산 수:      {result.total_operations:,}")
         print(f"총 소요 시간:    {result.total_time:.2f}초")
         print(f"처리량:          {result.ops_per_sec:,.0f} ops/sec")
-        print(f"\n지연시간 (ms):")
+        print("\n지연시간 (ms):")
         print(f"  P50:           {result.p50:.2f} ms")
         print(f"  P95:           {result.p95:.2f} ms")
         print(
-            f"  P99:           {result.p99:.2f} ms {'✅' if result.p99 < 15 else '❌ (목표: < 15ms)'}"
+            f"  P99:           {result.p99:.2f} ms "
+            f"{'✅' if result.p99 < 15 else '❌ (목표: < 15ms)'}"
         )
         print(f"  Max:           {result.max:.2f} ms")
         print(f"  Min:           {result.min:.2f} ms")
@@ -204,7 +205,7 @@ async def benchmark_lua_script_concurrent(
         BenchmarkResult
     """
     print(f"\n{'='*80}")
-    print(f"테스트 2-B: Lua 스크립트 실제 처리량 (병렬 실행, 목표: 5,000+ ops/sec)")
+    print("테스트 2-B: Lua 스크립트 실제 처리량 (병렬 실행, 목표: 5,000+ ops/sec)")
     print(f"{'='*80}")
     print(f"연산 횟수: {num_operations:,}")
     print(f"동시 실행 수: {concurrency}")
@@ -293,15 +294,16 @@ async def benchmark_lua_script_concurrent(
 
         # 결과 출력
         print(f"\n{'─'*80}")
-        print(f"📊 결과 (병렬):")
+        print("📊 결과 (병렬):")
         print(f"{'─'*80}")
         print(f"총 연산 수:      {result.total_operations:,}")
         print(f"총 소요 시간:    {result.total_time:.2f}초")
         print(f"동시 실행 수:    {concurrency}")
         print(
-            f"처리량:          {result.ops_per_sec:,.0f} ops/sec {'✅' if result.ops_per_sec >= 5000 else '❌ (목표: >= 5,000)'}"
+            f"처리량:          {result.ops_per_sec:,.0f} ops/sec "
+        f"{'✅' if result.ops_per_sec >= 5000 else '❌ (목표: >= 5,000)'}"
         )
-        print(f"\n지연시간 (ms):")
+        print("\n지연시간 (ms):")
         print(f"  P50:           {result.p50:.2f} ms")
         print(f"  P95:           {result.p95:.2f} ms")
         print(f"  P99:           {result.p99:.2f} ms")
@@ -312,7 +314,7 @@ async def benchmark_lua_script_concurrent(
         # 목표 달성 여부
         if result.ops_per_sec >= 5000:
             print(f"\n✅ 목표 달성: {result.ops_per_sec:,.0f} ops/sec >= 5,000")
-            print(f"💡 병렬 실행으로 실제 처리량 검증 완료")
+            print("💡 병렬 실행으로 실제 처리량 검증 완료")
         else:
             print(f"\n⚠️  목표 미달: {result.ops_per_sec:,.0f} ops/sec < 5,000")
             print(
@@ -341,7 +343,7 @@ async def benchmark_lua_script_throughput(
         BenchmarkResult
     """
     print(f"\n{'='*80}")
-    print(f"테스트 2: Lua 스크립트 처리량 (목표: 5,000+ ops/sec)")
+    print("테스트 2: Lua 스크립트 처리량 (목표: 5,000+ ops/sec)")
     print(f"{'='*80}")
     print(f"연산 횟수: {num_operations:,}")
 
@@ -368,8 +370,8 @@ async def benchmark_lua_script_throughput(
             ttl=3600,
         )
 
-        print(f"✓ 초기 상태 설정 완료")
-        print(f"⏱️  Lua 스크립트 실행 중...")
+        print("✓ 초기 상태 설정 완료")
+        print("⏱️  Lua 스크립트 실행 중...")
 
         # 벤치마크 시작
         start_time = time.perf_counter()
@@ -415,14 +417,15 @@ async def benchmark_lua_script_throughput(
 
         # 결과 출력
         print(f"\n{'─'*80}")
-        print(f"📊 결과:")
+        print("📊 결과:")
         print(f"{'─'*80}")
         print(f"총 연산 수:      {result.total_operations:,}")
         print(f"총 소요 시간:    {result.total_time:.2f}초")
         print(
-            f"처리량:          {result.ops_per_sec:,.0f} ops/sec {'✅' if result.ops_per_sec >= 5000 else '❌ (목표: >= 5,000)'}"
+            f"처리량:          {result.ops_per_sec:,.0f} ops/sec "
+        f"{'✅' if result.ops_per_sec >= 5000 else '❌ (목표: >= 5,000)'}"
         )
-        print(f"\n지연시간 (ms):")
+        print("\n지연시간 (ms):")
         print(f"  P50:           {result.p50:.2f} ms")
         print(f"  P95:           {result.p95:.2f} ms")
         print(f"  P99:           {result.p99:.2f} ms")
@@ -457,10 +460,10 @@ async def benchmark_ttl_accuracy(num_samples: int = 100) -> dict:
         dict: 통계 정보
     """
     print(f"\n{'='*80}")
-    print(f"테스트 3: TTL 정확성 (목표: ±1초 이내)")
+    print("테스트 3: TTL 정확성 (목표: ±1초 이내)")
     print(f"{'='*80}")
     print(f"샘플 수: {num_samples}")
-    print(f"테스트 TTL: 5초 (빠른 테스트)")
+    print("테스트 TTL: 5초 (빠른 테스트)")
 
     manager = await setup_redis()
     ttl_errors = []
@@ -480,7 +483,7 @@ async def benchmark_ttl_accuracy(num_samples: int = 100) -> dict:
             cache = WebsocketConnectionCache(spec)
 
             # 상태 설정 (TTL 5초)
-            set_time = time.time()
+
             await cache.set_connection_state(
                 status=CONNECTION_STATUS_CONNECTED,
                 scope=spec.scope,
@@ -522,7 +525,7 @@ async def benchmark_ttl_accuracy(num_samples: int = 100) -> dict:
 
         # 결과 출력
         print(f"\n{'─'*80}")
-        print(f"📊 결과:")
+        print("📊 결과:")
         print(f"{'─'*80}")
         print(f"샘플 수:         {result['num_samples']}")
         print(f"평균 오차:       {result['avg_error']:.3f}초")
@@ -537,7 +540,7 @@ async def benchmark_ttl_accuracy(num_samples: int = 100) -> dict:
             print(f"\n✅ 목표 달성: {result['within_1s_pct']:.1f}% >= 99%")
         else:
             print(f"\n⚠️  목표 미달: {result['within_1s_pct']:.1f}% < 99%")
-        print(f"\n💡 참고: Redis TTL은 초 단위 정확도 (±1초 오차 정상)")
+        print("\n💡 참고: Redis TTL은 초 단위 정확도 (±1초 오차 정상)")
 
         return result
 
@@ -596,7 +599,7 @@ async def run_all_benchmarks():
         print(f"   - P99: {r.p99:.2f}ms (목표: < 15ms)")
         print(f"   - 처리량: {r.ops_per_sec:,.0f} ops/sec")
     else:
-        print(f"\n1️⃣  상태 갱신 지연시간: ⚠️  실패")
+        print("\n1️⃣  상태 갱신 지연시간: ⚠️  실패")
 
     # 테스트 2: Lua 스크립트 처리량
     if results["lua_script"]:
@@ -606,7 +609,7 @@ async def run_all_benchmarks():
         print(f"   - 처리량: {r.ops_per_sec:,.0f} ops/sec (목표: >= 5,000)")
         print(f"   - P99: {r.p99:.2f}ms")
     else:
-        print(f"\n2️⃣  Lua 스크립트 처리량: ⚠️  실패")
+        print("\n2️⃣  Lua 스크립트 처리량: ⚠️  실패")
 
     # 테스트 3: TTL 정확성
     if results["ttl_accuracy"]:
@@ -616,7 +619,7 @@ async def run_all_benchmarks():
         print(f"   - ±1초 이내: {r['within_1s_pct']:.1f}% (목표: >= 99%)")
         print(f"   - 평균 오차: {r['avg_error']:.3f}초")
     else:
-        print(f"\n3️⃣  TTL 정확성: ⚠️  실패")
+        print("\n3️⃣  TTL 정확성: ⚠️  실패")
 
     print(f"\n{'='*80}")
     print("✅ 벤치마크 완료")

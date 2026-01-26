@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from src.core.connection.utils.parsers.base import TradeParser
@@ -49,9 +48,9 @@ class CoinbaseTradeParser(TradeParser):
 
         # Side 변환: "buy"/"sell" → BID/ASK
         side_raw = message.get("side", "buy").lower()
-        side = "BID" if side_raw == "buy" else "ASK"
+        side = 1 if side_raw == "buy" else -1
 
-        # ISO 8601 → Unix timestamp (밀리초)
+        # ISO 8601 → Unix timestamp (float seconds)
         time_str = message.get("time", "")
         timestamp = self._parse_iso_timestamp(time_str)
 
@@ -62,35 +61,37 @@ class CoinbaseTradeParser(TradeParser):
             trade_volume=float(message.get("size", 0)),
             ask_bid=side,
             sequential_id=str(message.get("trade_id", "")),
-
         )
 
-    def _parse_iso_timestamp(self, time_str: str) -> int:
-        """ISO 8601 문자열을 Unix timestamp (밀리초)로 변환.
+    def _parse_iso_timestamp(self, time_str: str) -> float:
+        """ISO 8601 문자열을 Unix timestamp (Seconds, float)로 변환.
 
         Args:
             time_str: "2019-08-14T20:42:27.265Z"
 
         Returns:
-            Unix timestamp (밀리초)
+            Unix timestamp (Seconds, float)
         """
         if not time_str:
-            return 0
+            return 0.0
 
         try:
-            # ISO 8601 파싱
+            # datetime 오버헤드 없이 문자열 파싱 시도 (간단한 ISO 포맷 가정)
+            # "2019-08-14T20:42:27.265Z" -> datetime -> timestamp()
+            # 정확성을 위해 우선 datetime 사용하되, import를 함수 내부나 상단으로
+            from datetime import datetime
             dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
-            return int(dt.timestamp() * 1000)
-        except (ValueError, AttributeError):
-            return 0
+            return dt.timestamp()
+        except (ValueError, AttributeError, ImportError):
+            return 0.0
 
     def _create_empty_trade(self) -> StandardTradeDTO:
         """빈 Trade DTO 생성."""
         return StandardTradeDTO(
             code="UNKNOWN",
-            trade_timestamp=0,
+            trade_timestamp=0.0,
             trade_price=0.0,
             trade_volume=0.0,
-            ask_bid="BID",
+            ask_bid=1,
             sequential_id="0",
         )

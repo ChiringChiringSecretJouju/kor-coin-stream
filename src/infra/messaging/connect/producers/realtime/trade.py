@@ -31,15 +31,44 @@ class TradeDataProducer(AvroProducer):
     - asyncio.to_thread() CPU 오프로드
     """
     
-    def __init__(self, use_avro: bool = True) -> None:
+    def __init__(self, use_avro: bool = True, use_array_format: bool = False) -> None:
         """
         Args:
             use_avro: True면 Avro 직렬화, False면 JSON 직렬화
+            use_array_format: True면 데이터를 배열 포맷 [v, ts, p, q, s, id]으로 변환
         """
         super().__init__(use_avro=use_avro)
+        self.use_array_format = use_array_format
         if use_avro:
             self.enable_avro("trade-data-value")
     
+    def _transform_to_array_format(self, batch: list[dict[str, Any]]) -> list[list[Any]]:
+        """딕셔너리 리스트를 배열 리스트로 변환 (프로토콜 버전 포함).
+        
+        Format v1: [ver, ts, price, vol, side, id, code]
+        - ver: 1 (int)
+        - ts: trade_timestamp (float)
+        - price: trade_price (float)
+        - vol: trade_volume (float)
+        - side: ask_bid (int)
+        - id: sequential_id (str)
+        - code: code (str) - 배치 내 혼합 가능성 대비 포함
+        """
+        array_batch = []
+        for item in batch:
+            # 필수 필드 추출 (속도 최적화를 위해 get 대신 직접 접근 시도 가능하나 안전하게 get 사용)
+            row = [
+                1,  # Protocol Version
+                item.get("trade_timestamp", 0.0),
+                item.get("trade_price", 0.0),
+                item.get("trade_volume", 0.0),
+                item.get("ask_bid", 0),
+                item.get("sequential_id", ""),
+                item.get("code", ""),
+            ]
+            array_batch.append(row)
+        return array_batch
+
     def _convert_to_dto(
         self, scope: ConnectionScopeDomain, batch: list[dict[str, Any]]
     ) -> RealtimeDataBatchDTO:
@@ -51,7 +80,8 @@ class TradeDataProducer(AvroProducer):
             timestamp_ms=int(time.time() * 1000),
             batch_size=len(batch),
             batch_id=None,
-            data=batch,
+
+            data=self._transform_to_array_format(batch) if self.use_array_format else batch,
         )
     
     async def send_batch(
