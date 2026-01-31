@@ -174,6 +174,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
     """
 
     config = providers.Configuration()
+    ticker_producer = providers.Dependency()
+    trade_producer = providers.Dependency()
 
     upbit = providers.Factory(
         HANDLER_CLASS_MAP["upbit"],
@@ -182,6 +184,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.upbit.heartbeat_kind,
         heartbeat_message=config.handlers.upbit.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     bithumb = providers.Factory(
@@ -191,6 +195,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.bithumb.heartbeat_kind,
         heartbeat_message=config.handlers.bithumb.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     coinone = providers.Factory(
@@ -200,6 +206,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.coinone.heartbeat_kind,
         heartbeat_message=config.handlers.coinone.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     korbit = providers.Factory(
@@ -209,6 +217,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.korbit.heartbeat_kind,
         heartbeat_message=config.handlers.korbit.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     # 한국 거래소 전용 FactoryAggregate
@@ -238,6 +248,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
     """
 
     config = providers.Configuration()
+    ticker_producer = providers.Dependency()
+    trade_producer = providers.Dependency()
 
     binance = providers.Factory(
         HANDLER_CLASS_MAP["binance"],
@@ -246,6 +258,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.binance.heartbeat_kind,
         heartbeat_message=config.handlers.binance.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     bybit = providers.Factory(
@@ -255,6 +269,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.bybit.heartbeat_kind,
         heartbeat_message=config.handlers.bybit.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     okx = providers.Factory(
@@ -264,6 +280,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.okx.heartbeat_kind,
         heartbeat_message=config.handlers.okx.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     huobi = providers.Factory(
@@ -273,6 +291,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.huobi.heartbeat_kind,
         heartbeat_message=config.handlers.huobi.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     # 아시아 거래소 전용 FactoryAggregate
@@ -306,6 +326,8 @@ class NorthAmericaHandlerContainer(containers.DeclarativeContainer):
     """
 
     config = providers.Configuration()
+    ticker_producer = providers.Dependency()
+    trade_producer = providers.Dependency()
 
     coinbase = providers.Factory(
         HANDLER_CLASS_MAP["coinbase"],
@@ -314,6 +336,8 @@ class NorthAmericaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.coinbase.heartbeat_kind,
         heartbeat_message=config.handlers.coinbase.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     kraken = providers.Factory(
@@ -323,6 +347,8 @@ class NorthAmericaHandlerContainer(containers.DeclarativeContainer):
         request_type=providers.Dependency(),
         heartbeat_kind=config.handlers.kraken.heartbeat_kind,
         heartbeat_message=config.handlers.kraken.heartbeat_message,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
     )
 
     # 북미 거래소 전용 FactoryAggregate
@@ -361,11 +387,28 @@ class HandlerContainer(containers.DeclarativeContainer):
     """
 
     config = providers.Configuration()
+    ticker_producer = providers.Dependency()
+    trade_producer = providers.Dependency()
 
     # 지역별 Container 포함
-    korea = providers.Container(KoreaHandlerContainer, config=config)
-    asia = providers.Container(AsiaHandlerContainer, config=config)
-    north_america = providers.Container(NorthAmericaHandlerContainer, config=config)
+    korea = providers.Container(
+        KoreaHandlerContainer,
+        config=config,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
+    )
+    asia = providers.Container(
+        AsiaHandlerContainer,
+        config=config,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
+    )
+    north_america = providers.Container(
+        NorthAmericaHandlerContainer,
+        config=config,
+        ticker_producer=ticker_producer,
+        trade_producer=trade_producer,
+    )
 
     # 모든 지역의 핸들러를 통합한 FactoryAggregate
     handler_factory = providers.FactoryAggregate(
@@ -408,7 +451,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
     # ===== 하위 컨테이너 포함 =====
     infra = providers.Container(InfrastructureContainer, config=config.infra)
     messaging = providers.Container(MessagingContainer, config=config.messaging)
-    handlers = providers.Container(HandlerContainer, config=config)
+    handlers = providers.Container(
+        HandlerContainer,
+        config=config,
+        ticker_producer=messaging.ticker_producer,
+        trade_producer=messaging.trade_producer,
+    )
 
     # ===== Core Components (StreamOrchestrator 의존성) =====
     connection_registry = providers.Factory(ConnectionRegistry)

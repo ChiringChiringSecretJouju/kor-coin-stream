@@ -43,6 +43,8 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         request_type: str,
         heartbeat_kind: str | None = None,
         heartbeat_message: str | None = None,
+        ticker_producer: TickerDataProducer | None = None,
+        trade_producer: TradeDataProducer | None = None,
     ) -> None:
         super().__init__(
             exchange_name=exchange_name,
@@ -57,10 +59,18 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         self.ping_interval = websocket_settings.heartbeat_interval
         self.projection: list[str] | None = None  # 필드 필터링용
 
-        # 배치 수집기 및 프로듀서 (글로벌 거래소 특화 설정)
+        # 배치 수집기 및 프로듀서
         self._batch_collector: RealtimeBatchCollector | None = None
-        self._ticker_producer: TickerDataProducer | None = None
-        self._trade_producer: TradeDataProducer | None = None
+        
+        # DI 주입된 프로듀서 사용 (없으면 _initialize_batch_system에서 생성)
+        self._ticker_producer: TickerDataProducer | None = ticker_producer
+        self._trade_producer: TradeDataProducer | None = trade_producer
+
+        # 프로듀서가 주입되었는지 여부 확인 (라이프사이클 관리용)
+        # 주입된 경우: 외부(Container)에서 수명 관리 -> 여기서 stop 호출 안함
+        # 생성한 경우: 내부에서 수명 관리 -> 여기서 stop 호출함
+        self._is_shared_producer = ticker_producer is not None and trade_producer is not None
+        
         self._batch_enabled = True  # 배치 수집 활성화 플래그
 
     def _extract_symbol(self, message: dict[str, Any]) -> str | None:
@@ -153,29 +163,42 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         if not self._batch_enabled:
             return
         try:
-            # 타입별 Producer 초기화 (Avro 지원, Array Format 옵션 적용)
-            use_array_format = kafka_settings.use_array_format
-            self._ticker_producer = TickerDataProducer(use_avro=True)
-            self._trade_producer = TradeDataProducer(
-                use_avro=False, use_array_format=use_array_format
-            )
-
-            # Producer 시작
-            await self._ticker_producer.start_producer()
-            await self._trade_producer.start_producer()
+            # 프로듀서가 없으면 생성 (레거시/독립 모드)
+            if not self._ticker_producer:
+                self._ticker_producer = TickerDataProducer(use_avro=True)
+                await self._ticker_producer.start_producer()
+                
+            if not self._trade_producer:
+                use_array_format = kafka_settings.use_array_format
+                self._trade_producer = TradeDataProducer(
+                    use_avro=False, use_array_format=use_array_format
+                )
+                await self._trade_producer.start_producer()
 
             # 배치 수집기 초기화 (글로벌 거래소 특화 설정)
             async def emit_batch(batch: list[dict[str, Any]]) -> bool:
-                """배치 전송 콜백 함수 - 타입별 Producer 선택"""
+                """배치 전송 콜백 함수 - 타입별 Producer 선택 및 키 생성"""
+                if not batch:
+                    return False
+
                 request_type = self.scope.request_type
+
+                # 배치 내 첫 번째 메시지에서 심볼 추출 
+                # (RealtimeBatchCollector가 이미 심볼별로 그룹화함)
+                first_msg = batch[0]
+                symbol = self._extract_symbol(first_msg) or "UNKNOWN"
+
+                # Kafka Key 생성: {region}-{exchange}-{type}-{coin}
+                # 예: asia-binance-ticker-BTC
+                kafka_key = f"{self.scope.region}-{self.scope.exchange}-{request_type}-{symbol}"
 
                 if request_type == "ticker" and self._ticker_producer:
                     return await self._ticker_producer.send_batch(
-                        scope=self.scope, batch=batch
+                        scope=self.scope, batch=batch, key=kafka_key
                     )
                 elif request_type == "trade" and self._trade_producer:
                     return await self._trade_producer.send_batch(
-                        scope=self.scope, batch=batch
+                        scope=self.scope, batch=batch, key=kafka_key
                     )
                 return False
 
@@ -191,7 +214,8 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             await self._batch_collector.start()
 
             logger.info(
-                f"{self.scope.exchange}: Batch collection system initialized (Global optimized)"
+                f"{self.scope.exchange}: Batch collection system initialized "
+                f"(Global optimized, shared_producer={self._is_shared_producer})"
             )
 
         except Exception as e:
@@ -212,13 +236,17 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             await self._batch_collector.stop()
             self._batch_collector = None
 
-        # 타입별 Producer 정리
-        if self._ticker_producer:
-            await self._ticker_producer.stop_producer()
-            self._ticker_producer = None
-        if self._trade_producer:
-            await self._trade_producer.stop_producer()
-            self._trade_producer = None
+        # 공유 프로듀서가 아닌 경우에만 정리
+        if not self._is_shared_producer:
+            if self._ticker_producer:
+                await self._ticker_producer.stop_producer()
+                self._ticker_producer = None
+            if self._trade_producer:
+                await self._trade_producer.stop_producer()
+                self._trade_producer = None
+        else:
+            # 공유 프로듀서는 여기서 정리하지 않음
+            pass
 
         logger.info(f"{self.scope.exchange}: Batch collection system cleaned up")
 
@@ -226,11 +254,6 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         """배치 수집 활성화"""
         self._batch_enabled = True
         logger.info(f"{self.scope.exchange}: Batch collection enabled")
-
-    def disable_batch_collection(self) -> None:
-        """배치 수집 비활성화"""
-        self._batch_enabled = False
-        logger.info(f"{self.scope.exchange}: Batch collection disabled")
 
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
         """티커 메시지 처리 함수 (글로벌 거래소 배치 수집 지원)"""

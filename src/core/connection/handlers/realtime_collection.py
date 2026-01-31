@@ -15,12 +15,13 @@ logger = PipelineLogger.get_logger("realtime_collector", "connection")
 
 # 타입 정의
 EmitFactory: TypeAlias = Callable[[list[dict[str, Any]]], Awaitable[bool]]
-MessageType: TypeAlias = Literal["ticker", "orderbook", "trade"]
+MessageType: TypeAlias = Literal["ticker", "trade"]
 BatchData: TypeAlias = TickerResponseData | TradeResponseData
 MemoryStorage: TypeAlias = dict[MessageType, deque[BatchData]]
+SymbolGroup: TypeAlias = dict[str, list[dict[str, Any]]]
 
 # 상수 정의
-MESSAGE_TYPES: tuple[MessageType, ...] = ("ticker", "orderbook", "trade")
+MESSAGE_TYPES: tuple[MessageType, ...] = ("ticker", "trade")
 ERROR_RETRY_DELAY: float = 1.0
 DEFAULT_SYMBOL_KEY: str = "UNKNOWN"  # 심볼 추출 실패 시 기본값
 
@@ -55,7 +56,6 @@ class RealtimeBatchCollector:
         # 배치 데이터 저장소 (딕셔너리로 통합 관리)
         self._batches: MemoryStorage = {
             "ticker": deque(maxlen=self.max_batch_size),
-            "orderbook": deque(maxlen=self.max_batch_size),
             "trade": deque(maxlen=self.max_batch_size),
         }
 
@@ -216,7 +216,7 @@ class RealtimeBatchCollector:
         self._batches[message_type] = deque(maxlen=self.max_batch_size)
 
         # 심볼별로 그룹화 (같은 심볼끼리 묶음) - defaultdict로 간결화
-        symbol_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        symbol_groups: SymbolGroup = defaultdict(list)
         for message in batch:
             if not isinstance(message, dict):
                 continue
@@ -248,7 +248,3 @@ class RealtimeBatchCollector:
             logger.debug("Realtime batches flushed (force=True)")
         else:
             logger.debug("Realtime batches flushed (auto/count trigger)")
-
-    def get_batch_status(self) -> dict[str, int]:
-        """현재 배치 상태 조회 (디버깅용)"""
-        return {msg_type: len(self._batches[msg_type]) for msg_type in MESSAGE_TYPES}
