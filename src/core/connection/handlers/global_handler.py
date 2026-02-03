@@ -202,11 +202,11 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
                     )
                 return False
 
-            # 글로벌 거래소 특화 배치 설정 (Extreme Low Latency 모드)
+            # 글로벌 거래소 특화 배치 설정 (효율적 배치 모드)
             self._batch_collector = RealtimeBatchCollector(
-                batch_size=10,  # 10개만 모여도 즉시 전송
-                time_window=0.1,  # 최소 0.1초마다 강제 플러시 (Real-time 보장)
-                max_batch_size=20,  # 한 분할 전송 최대량 제한
+                batch_size=30,  # 30개 모이면 전송 (기존 10개에서 상향)
+                time_window=5.0,  # 5초마다 강제 플러시 (기존 0.1초에서 상향)
+                max_batch_size=100,  # 최대 배치 크기
                 emit_factory=emit_batch,
             )
 
@@ -394,9 +394,15 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             # 처리 시작 시각 기록 (Latency 측정용)
             start_time = time.time()
 
-            message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
-            # 수신 알림으로 워치독에 최신 수신 시각을 전달
-            self._health_monitor.notify_receive()
+            try:
+                message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
+                # 수신 알림으로 워치독에 최신 수신 시각을 전달
+                self._health_monitor.notify_receive()
+            except asyncio.TimeoutError:
+                # 60초간 데이터가 없더라도 연결 자체는 건강할 수 있음
+                logger.debug(f"{self.scope.exchange}: No data received for {timeout}s (Timeout)")
+                continue
+
             parsed_message = self._parse_message(message)
 
             # 심볼 추출 후 분 집계 카운트 증가 (처리 시간 포함)

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Literal, TypeAlias
 
 from src.common.logger import PipelineLogger
@@ -53,20 +53,20 @@ class RealtimeBatchCollector:
         self.max_batch_size = max_batch_size
         self.emit_factory = emit_factory
 
-        # 배치 데이터 저장소 (딕셔너리로 통합 관리)
-        self._batches: MemoryStorage = {
-            "ticker": deque(maxlen=self.max_batch_size),
-            "trade": deque(maxlen=self.max_batch_size),
+        # 배치 데이터 저장소 (심볼별 격리 관리)
+        # 구조: _batches[type][symbol] = deque
+        self._batches: dict[str, dict[str, deque]] = {
+            "ticker": defaultdict(lambda: deque(maxlen=self.max_batch_size)),
+            "trade": defaultdict(lambda: deque(maxlen=self.max_batch_size)),
         }
 
-        # 배치별 개별 타이머
-        current_time = time.time()
-        self._batch_timers: dict[MessageType, float] = {
-            msg_type: current_time for msg_type in MESSAGE_TYPES
+        # 심볼별 마지막 플러시 시간 관리 (큐에 데이터가 들어온 시점)
+        # 구조: _batch_timers[type][symbol] = timestamp
+        self._batch_timers: dict[str, dict[str, float]] = {
+            "ticker": defaultdict(lambda: 0.0),
+            "trade": defaultdict(lambda: 0.0),
         }
 
-        # 타이머 관리
-        self._last_flush_time = current_time
         self._flush_timer: asyncio.Task | None = None
         self._is_running = False
 
@@ -93,15 +93,22 @@ class RealtimeBatchCollector:
         if symbol := data.get("target_currency"):
             return str(symbol).upper()
 
-        # 거래소별 필드 확인
+        # 2. 거래소별 필드 확인
         for key in ["symbol", "code", "market", "s", "instId", "product_id"]:
-            if symbol := data.get(key):
-                # 코인만 추출 (예: KRW-BTC → BTC, BTCUSDT → BTC)
-                symbol_str = str(symbol).upper()
+            if val := data.get(key):
+                # 코인만 추출 (예: KRW-BTC → BTC, BTCUSDT → BTC, ETH/USD → ETH)
+                symbol_str = str(val).upper()
 
-                # 하이픈 구분 (KRW-BTC)
-                if "-" in symbol_str:
-                    return symbol_str.split("-")[-1]
+                # 구분자 처리 (하이픈 -, 슬래시 /)
+                for sep in ["-", "/"]:
+                    if sep in symbol_str:
+                        # 통상 페어에서 뒤쪽이 quote이므로 앞쪽 혹은 뒤쪽 선택 logic
+                        parts = symbol_str.split(sep)
+                        for part in parts:
+                            # quote 성격이 강한 심볼 제외 시도
+                            if part not in ["KRW", "USDT", "USD", "BTC", "ETH"]:
+                                return part
+                        return parts[0] # fallback: 앞쪽 선택 (Asia/NA 기준)
 
                 # USDT 등 제거 (BTCUSDT → BTC)
                 for suffix in ["USDT", "BUSD", "USDC", "BTC", "ETH", "KRW"]:
@@ -112,10 +119,38 @@ class RealtimeBatchCollector:
 
         return DEFAULT_SYMBOL_KEY
 
+    @staticmethod
+    def _extract_timestamp_from_message(data: dict[str, Any]) -> float:
+        """정렬을 위한 타임스탬프 추출 (숫자형 및 ISO 문자열 대응)"""
+        # 1. 숫자형 및 문자열 타임스탬프 키 확인
+        ts_keys = ["trade_timestamp", "timestamp", "ts", "E", "T", "time"]
+        for key in ts_keys:
+            val = data.get(key)
+            if not val:
+                continue
+                
+            # 숫자형(int/float) 처리
+            try:
+                ts_val = float(val)
+                if ts_val > 1e12:  # ms (13자리 이상)
+                    return ts_val / 1000.0
+                return ts_val
+            except (ValueError, TypeError):
+                # ISO 8601 문자열 처리 (Coinbase: "2025-09-24T04:22:00.543709Z")
+                if isinstance(val, str) and ("T" in val):
+                    try:
+                        # 'Z'를 UTC 오프셋으로 변환하여 fromisoformat 지원
+                        clean_ts = val.replace("Z", "+00:00")
+                        return datetime.fromisoformat(clean_ts).timestamp()
+                    except ValueError:
+                        continue
+        
+        # 2. 없으면 현재 시각 (Fallback) - Explicit UTC
+        return datetime.now(timezone.utc).timestamp()
+
     async def start(self) -> None:
         """컬렉터 시작 및 백그라운드 타이머 실행"""
         self._is_running = True
-        self._last_flush_time = time.time()
 
         # 백그라운드 타이머 시작
         self._flush_timer = asyncio.create_task(self._auto_flush_timer())
@@ -124,6 +159,7 @@ class RealtimeBatchCollector:
             f"""
             RealtimeBatchCollector started: batch_size={self.batch_size},
             time_window={self.time_window}s, max_size={self.max_batch_size}
+            (Order: Sorted by Exchange Timestamp, Target: Sharded by Symbol)
             """
         )
 
@@ -139,49 +175,54 @@ class RealtimeBatchCollector:
             except asyncio.CancelledError:
                 pass
 
-        # 잔여 배치 플러시
-        if any(self._batches.values()):
-            await self._flush_batches(force=True)
+        # 잔여 모든 배치 플러시
+        await self._flush_all_batches()
 
         logger.info("RealtimeBatchCollector stopped")
 
     async def add_message(self, message_type: str, data: dict[str, Any]) -> None:
-        """메시지 배치에 추가 (성능 최적화)"""
+        """메시지를 심볼별 큐에 추가하고 조건 만족 시 플러시"""
         if not self._is_running:
             return
 
-        # 타입 검증
         if message_type not in self._batches:
             logger.warning(f"Unknown message type: {message_type}")
             return
 
-        # 배치에 추가
-        batch = self._batches[message_type]
-        batch.append(data)
-        self._batch_timers[message_type] = time.time()
+        symbol = self._extract_symbol_from_message(data)
+        queue = self._batches[message_type][symbol]
+        
+        # 데이터가 처음 들어온 시점에 타이머 기록
+        if not queue:
+            self._batch_timers[message_type][symbol] = datetime.now(timezone.utc).timestamp()
+            
+        queue.append(data)
 
-        # 플러시 조건 확인
-        batch_len = len(batch)
-        if batch_len >= self.max_batch_size or batch_len >= self.batch_size:
-            await self._flush_single_batch(message_type)
+        # 갯수 기준 플러시
+        if len(queue) >= self.batch_size:
+            await self._flush_symbol_batch(message_type, symbol)
 
     async def _auto_flush_timer(self) -> None:
-        """백그라운드 타이머로 주기적 플러시"""
+        """백그라운드 루프: 시간 기준(time_window) 플러시"""
         while self._is_running:
             try:
-                await asyncio.sleep(self.time_window)
+                await asyncio.sleep(0.5)  # 0.5초 간격으로 스위핑
 
                 if not self._is_running:
                     break
 
-                # 배치별 개별 시간 기준 플러시
-                current_time = time.time()
+                current_time = datetime.now(timezone.utc).timestamp()
                 for msg_type in MESSAGE_TYPES:
-                    if (
-                        current_time - self._batch_timers[msg_type] >= self.time_window
-                        and self._batches[msg_type]
-                    ):
-                        await self._flush_single_batch(msg_type)
+                    # 복사본으로 순회 (RuntimeError 방지)
+                    active_symbols = list(self._batches[msg_type].keys())
+                    for symbol in active_symbols:
+                        queue = self._batches[msg_type][symbol]
+                        if not queue:
+                            continue
+                            
+                        last_flush = self._batch_timers[msg_type][symbol]
+                        if current_time - last_flush >= self.time_window:
+                            await self._flush_symbol_batch(msg_type, symbol)
 
             except asyncio.CancelledError:
                 break
@@ -189,62 +230,36 @@ class RealtimeBatchCollector:
                 logger.error(f"Auto flush timer error: {e}")
                 await asyncio.sleep(ERROR_RETRY_DELAY)
 
-    async def _flush_single_batch(self, message_type: str) -> None:
-        """단일 타입 배치 플러시 (심볼별 그룹화 후 전송)
-
-        핵심 개선:
-        - 수집: 타입별로 묶어서 효율적 (기존 유지)
-        - 전송: 심볼별로 그룹화해서 분리 전송 (신규)
-
-        예시:
-            배치: [BTC, ETH, BTC, XRP, BTC, ETH]
-            ↓ 그룹화
-            BTC: [msg1, msg3, msg5]
-            ETH: [msg2, msg6]
-            XRP: [msg4]
-            ↓ 각각 개별 전송
-            send(BTC 배치), send(ETH 배치), send(XRP 배치)
-        """
-        if message_type not in self._batches:
+    async def _flush_symbol_batch(self, message_type: str, symbol: str) -> None:
+        """특정 심볼의 배치를 정렬하여 전송"""
+        if symbol not in self._batches[message_type]:
+            return
+            
+        queue = self._batches[message_type][symbol]
+        if not queue:
             return
 
-        batch = self._batches[message_type]
-        if not batch or not self.emit_factory:
-            return
+        # 1. 큐 데이터 복사 및 초기화
+        batch_to_send = list(queue)
+        queue.clear()
+        self._batch_timers[message_type][symbol] = datetime.now(timezone.utc).timestamp()
 
-        # 참조 교체로 copy() 오버헤드 제거
-        self._batches[message_type] = deque(maxlen=self.max_batch_size)
+        # 2. 거래소 타임스탬프 기준으로 정렬 (주요 요청사항)
+        batch_to_send.sort(key=self._extract_timestamp_from_message)
 
-        # 심볼별로 그룹화 (같은 심볼끼리 묶음) - defaultdict로 간결화
-        symbol_groups: SymbolGroup = defaultdict(list)
-        for message in batch:
-            if not isinstance(message, dict):
-                continue
-
-            symbol = self._extract_symbol_from_message(message)
-            symbol_groups[symbol].append(message)
-
-        # 심볼별로 개별 전송
-        for symbol, messages in symbol_groups.items():
+        # 3. 전송
+        if self.emit_factory:
             try:
-                await self.emit_factory(messages)
+                await self.emit_factory(batch_to_send)
                 logger.debug(
-                    f"Flushed {len(messages)} {message_type} messages for symbol={symbol}"
+                    f"Flushed {len(batch_to_send)} {message_type} messages for {symbol} (Sorted)"
                 )
             except Exception as e:
-                logger.error(
-                    f"Failed to flush {message_type} batch for symbol={symbol}: {e}",
-                    exc_info=True,
-                )
+                logger.error(f"Failed to flush {message_type} batch for {symbol}: {e}")
 
-    async def _flush_batches(self, force: bool = False) -> None:
-        """모든 배치 플러시"""
+    async def _flush_all_batches(self) -> None:
+        """중지 시 모든 잔여 데이터를 플러시"""
         for msg_type in MESSAGE_TYPES:
-            await self._flush_single_batch(msg_type)
-
-        self._last_flush_time = time.time()
-
-        if force:
-            logger.debug("Realtime batches flushed (force=True)")
-        else:
-            logger.debug("Realtime batches flushed (auto/count trigger)")
+            symbols = list(self._batches[msg_type].keys())
+            for symbol in symbols:
+                await self._flush_symbol_batch(msg_type, symbol)

@@ -542,7 +542,7 @@ class ConnectSuccessEventProducer(AvroProducer):
 
     - 지역별 토픽에 발행: ws.connect_success.{region}
     - 키 포맷: "{exchange}|{region}|{request_type}|{coin_symbol}"
-    - use_avro=True: AvroProducerWrapper (connect-success-events-value 스키마) - 기본값
+    - use_avro=True: AvroProducerWrapper (connect-success-events 스키마) - 기본값
     - use_avro=False: JsonProducerWrapper (orjson 기반)
     - 부모 클래스 기반 고성능 비동기 처리
     """
@@ -551,7 +551,7 @@ class ConnectSuccessEventProducer(AvroProducer):
         super().__init__(use_avro=use_avro)
         # Avro 사용 시 연결 성공 스키마 설정
         if use_avro:
-            self.enable_avro("connect-success-events-value")
+            self.enable_avro("connect_success")
 
     async def send_event(self, event: ConnectSuccessEventDTO, key: KeyType) -> bool:
         region = event.target.region
@@ -568,11 +568,11 @@ class RealtimeDataProducer(AvroProducer):
     """통합 실시간 데이터 배치 프로듀서 (리팩토링됨, Avro 직렬화 우선)
 
     토픽 전략:
-    - ticker-data.{region}
-    - trade-data.{region}
+    - realtime_ticker.{region}
+    - realtime_trade.{region}
 
     성능 최적화:
-    - use_avro=True: AvroProducerWrapper (ticker/trade-data-value 스키마) - 기본값
+    - use_avro=True: AvroProducerWrapper (realtime_ticker/trade-data-value 스키마) - 기본값
     - use_avro=False: JsonProducerWrapper (orjson 기반, 3-5배 빠름)
     - 부모 클래스 기반 고성능 비동기 처리
     - Avro 직렬화로 20-40% 메시지 크기 감소
@@ -584,7 +584,7 @@ class RealtimeDataProducer(AvroProducer):
         super().__init__(use_avro=use_avro)
         # Avro 사용 시 기본적으로 ticker 데이터 스키마 설정
         if use_avro:
-            self.enable_avro("ticker-data-value")
+            self.enable_avro("realtime_ticker")
 
     def _convert_to_dto(
         self, scope: ConnectionScopeDomain, batch: list[dict[str, Any]]
@@ -671,7 +671,7 @@ class BatchMonitoringProducer(AvroProducer):
 
     def __init__(self) -> None:
         # Avro 직렬화 사용
-        super().__init__(use_avro=True)
+        super().__init__(use_avro=False)
         self.topic = "monitoring.batch.performance"
         # TODO: 스키마 등록 후 enable
         # self.enable_avro("batch-monitoring-value")

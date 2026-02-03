@@ -107,14 +107,19 @@ class AsyncAvroSerializer(AsyncBaseAvroHandler):
         confluent_client = await self.ensure_connection()
 
         # 직렬화기 생성 (await 필수 - 비동기 생성자)
+        # 직렬화기 생성 (await 필수 - 비동기 생성자)
         # schema_str 없이 생성 → subject 기반으로 Registry에서 자동 조회
         # use.latest.version=True → 최신 스키마 사용
+        # subject.name.strategy: 토픽 이름을 그대로 Subject로 사용 (suffix 없음)
+        
         self._confluent_serializer = await ConfluentAsyncAvroSerializer(
             schema_registry_client=confluent_client,
             to_dict=lambda obj, ctx: obj,  # dict 그대로 반환
             conf={
                 "use.latest.version": True,  # 최신 스키마 자동 조회
                 "auto.register.schemas": False,  # 등록된 스키마만 사용
+                # 🚀 토픽명을 그대로 Subject로 사용
+                "subject.name.strategy": lambda ctx, schema: ctx.topic,
             },
         )
 

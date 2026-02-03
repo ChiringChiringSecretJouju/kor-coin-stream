@@ -26,6 +26,10 @@ def _normalize_coin_symbol(raw: str) -> str:
     - 폴백: 하이픈/언더스코어 기준 분리 후 대문자화
     """
     try:
+        # 중복 접두어 방지 (KRW-KRW-BTC -> KRW-BTC)
+        if isinstance(raw, str) and raw.startswith("KRW-KRW-"):
+            raw = raw[4:]
+
         extracted = _extract_symbol_impl({"symbol": raw})
         if isinstance(extracted, str) and extracted.endswith("_COUNT"):
             return extracted[:-6]

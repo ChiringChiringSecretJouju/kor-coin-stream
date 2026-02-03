@@ -20,8 +20,6 @@ def extract_subscription_symbols(params: dict[str, Any] | list[Any]) -> list[str
     """
 
     def collect_from_dict(d: dict[str, Any], bag: list[str]) -> None:
-        # 우선순위 없이 모든 후보 키를 수집
-        # O(1) 조회를 위해 튜플 사용
         target_keys = (
             "symbols", "codes", "pair", "pairs", 
             "symbol", "product_ids", "args", "instId"
@@ -32,21 +30,31 @@ def extract_subscription_symbols(params: dict[str, Any] | list[Any]) -> list[str
                 continue
                 
             if isinstance(v, list):
-                # 리스트 형태 (["BTC", "ETH"])
-                # 모든 요소를 문자열로 변환하여 수집
-                bag.extend([str(x) for x in v if isinstance(x, (str, int))])
+                for x in v:
+                    if isinstance(x, (str, int)):
+                        s = str(x)
+                        # 중복 접두어 방지 (KRW-KRW-BTC -> KRW-BTC)
+                        if s.startswith("KRW-KRW-"):
+                            s = s[4:]
+                        bag.append(s)
             elif isinstance(v, (str, int)):
-                # 단일 문자열 형태 ("BTC")
-                bag.append(str(v))
+                s = str(v)
+                if s.startswith("KRW-KRW-"):
+                    s = s[4:]
+                bag.append(s)
         
-        # 중첩 params 처리 (Kraken v2 등 특정 케이스)
+        # 중첩 params 처리
         p = d.get("params")
         if isinstance(p, dict):
-            # 재귀 호출 대신 1-depth만 확인 (성능 고려)
             for key in target_keys:
                 v = p.get(key)
                 if isinstance(v, list):
-                    bag.extend([str(x) for x in v if isinstance(x, (str, int))])
+                    for x in v:
+                        if isinstance(x, (str, int)):
+                            s = str(x)
+                            if s.startswith("KRW-KRW-"):
+                                s = s[4:]
+                            bag.append(s)
 
     collected: list[str] = []
     
@@ -90,9 +98,32 @@ def merge_subscription_params(
     if not current:
         return current
         
-    # List 타입인 경우 (매우 드묾, 보통 dict)
-    # -> 비지니스 로직상 처리 난해하므로 원본 반환 또는 빈 dict 생성
-    # 여기서는 예외적으로 처리하지 않음 (핸들러 레벨에서 방어)
+    # 2. List 타입인 경우 (Upbit, Bithumb 등 배열 요청 방식 대응)
+    if isinstance(current, list):
+        updated_list = [item.copy() if isinstance(item, dict) else item for item in current]
+        
+        # 'codes' 또는 'symbols' 키를 가진 객체 찾아서 업데이트
+        for item in updated_list:
+            if not isinstance(item, dict):
+                continue
+                
+            for key in ("codes", "symbols", "symbol", "product_ids"):
+                if key in item:
+                    existing_val = item[key]
+                    existing_set = set()
+                    
+                    if isinstance(existing_val, list):
+                        existing_set.update(str(x) for x in existing_val)
+                    elif isinstance(existing_val, str):
+                        existing_set.add(existing_val)
+                        
+                    existing_set.update(new_symbols)
+                    item[key] = list(existing_set)
+                    return updated_list # 첫 번째 매칭되는 객체만 처리하고 반환
+        
+        return updated_list
+
+    # 3. Dict 타입인 경우
     if not isinstance(current, dict):
         return current
         

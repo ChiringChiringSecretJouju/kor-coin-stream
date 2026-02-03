@@ -144,7 +144,7 @@ class StreamOrchestrator:
             return
 
         # 2. 핸들러 생성 (커넥터 책임)
-        handler = self._connector.create_handler_with(ctx.scope, ctx.projection)
+        handler = await self._connector.create_handler_with(ctx.scope, ctx.projection)
         logger.info(
             f"{ctx.scope.exchange} 핸들러 생성: {handler.__class__.__name__}"
         )
@@ -298,7 +298,7 @@ class StreamOrchestrator:
                 continue
 
             # 핸들러 생성
-            handler = self._connector.create_handler_with(
+            handler = await self._connector.create_handler_with(
                 single_ctx.scope, single_ctx.projection
             )
 
@@ -386,7 +386,7 @@ class WebsocketConnector:
         """
         return None  # DI 모드에서는 항상 None
 
-    def create_handler_with(
+    async def create_handler_with(
         self, scope: ConnectionScopeDomain, projection: list[str] | None = None
     ) -> ExchangeSocketHandler:
         """핸들러 생성 (FactoryAggregate 또는 dict 지원)
@@ -423,6 +423,11 @@ class WebsocketConnector:
                     exchange_key,
                     request_type=scope.request_type,
                 )
+                
+                # Check if handler is a coroutine/future (DI issue safeguard)
+                if asyncio.iscoroutine(handler) or isinstance(handler, asyncio.Future):
+                    handler = await handler
+                    
         except (KeyError, ValueError, TypeError) as e:
             raise ValueError(
                 f"Failed to create handler for {scope.exchange}: {e}"

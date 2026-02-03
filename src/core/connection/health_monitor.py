@@ -4,6 +4,8 @@ import asyncio
 import time
 from typing import Any, Literal
 
+import websockets.exceptions
+
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
 from src.core.dto.internal.common import ConnectionPolicyDomain, ConnectionScopeDomain
@@ -84,6 +86,12 @@ class ConnectionHealthMonitor:
             self._update_heartbeat_status(success=True)
             logger.debug(f"{self.scope.exchange}: 하트비트 전송 성공")
 
+        except websockets.exceptions.ConnectionClosed:
+            # 연결이 닫힌 경우 경고 로그 없이 디버그 로그만 남기고 상위로 전파
+            self._update_heartbeat_status(success=False)
+            logger.debug(f"{self.scope.exchange}: 하트비트 전송 중 연결 종료됨")
+            raise
+
         except Exception as e:
             self._update_heartbeat_status(success=False)
             logger.warning(f"{self.scope.exchange}: 하트비트 전송 실패 - {e}")
@@ -141,6 +149,9 @@ class ConnectionHealthMonitor:
                 await asyncio.sleep(interval)
                 await self.send_heartbeat(websocket)
             except asyncio.CancelledError:
+                break
+            except websockets.exceptions.ConnectionClosed:
+                logger.info(f"{self.scope.exchange}: 연결 종료로 인해 하트비트 루프 중단")
                 break
             except Exception as e:
                 logger.error(f"{self.scope.exchange}: 하트비트 루프 에러 - {e}")

@@ -16,7 +16,7 @@ class ConnectSuccessEventProducer(AvroProducer):
     키: {exchange}|{region}|{request_type}|{coin_symbol}
 
     성능 최적화:
-    - use_avro=True: connect-success-events-value 스키마 (기본값)
+    - use_avro=True: connect-success-events 스키마 (기본값)
     - use_avro=False: orjson 기반 JSON 직렬화
     - 부모 클래스 기반 고성능 비동기 처리
     """
@@ -28,7 +28,7 @@ class ConnectSuccessEventProducer(AvroProducer):
         """
         super().__init__(use_avro=use_avro)
         if use_avro:
-            self.enable_avro("connect-success-events-value")
+            self.enable_avro("connect_success")
 
     async def send_event(self, event: ConnectSuccessEventDTO, key: KeyType) -> bool:
         """연결 성공 ACK 이벤트 전송.
