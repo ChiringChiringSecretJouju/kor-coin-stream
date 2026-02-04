@@ -133,7 +133,6 @@ class RealtimeDataBatchDTO(MarketContextModel):
         ..., description="배치 생성 시각 (Unix timestamp milliseconds)", gt=0
     )
     batch_size: int = Field(..., description="배치 크기 (메시지 수)", ge=1)
-    batch_id: str | None = Field(None, description="배치 ID (선택사항)")
     data: list[dict[str, Any]] = Field(
         ..., description="실시간 데이터 배열 (Ticker/Trade)"
     )

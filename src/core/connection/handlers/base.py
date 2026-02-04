@@ -337,12 +337,8 @@ class BaseWebsocketHandler(ABC):
                         await self._sending_socket_parameter(socket_parameters)
                     )
                     await websocket.send(subscription_message)
-                    logger.info(f"{self.scope.exchange}: 구독 파라미터 전송 완료")
 
                     # 웹소켓 연결 및 구독 요청 완료 -> ACK 이벤트 전송
-                    logger.info(
-                        f"{self.scope.exchange}: 웹소켓 연결 및 구독 완료, ACK 이벤트 전송"
-                    )
                     await self._emit_connect_success_ack()
 
                     # 하트비트/워치독 태스크 시작

@@ -419,7 +419,8 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
                 # 수신 알림으로 워치독에 최신 수신 시각을 전달
                 self._health_monitor.notify_receive()
             except asyncio.TimeoutError:
-                # 60초간 데이터가 없더라도 연결 자체는 건강할 수 있음 (특히 isOnlyRealtime: true 설정 시)
+                # 60초간 데이터가 없더라도 연결 자체는 건강할 수 있음 
+                # (특히 isOnlyRealtime: true 설정 시)
                 # notify_receive를 하지 않으므로 워치독이 결국 유휴 시간을 판단함
                 logger.debug(f"{self.scope.exchange}: No data received for {timeout}s (Timeout)")
                 continue

@@ -79,8 +79,6 @@ class TradeDataProducer(AvroProducer):
             request_type="trade",  # 고정
             timestamp_ms=int(time.time() * 1000),
             batch_size=len(batch),
-            batch_id=None,
-
             data=self._transform_to_array_format(batch) if self.use_array_format else batch,
         )
     

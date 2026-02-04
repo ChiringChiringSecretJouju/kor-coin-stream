@@ -50,7 +50,6 @@ class TickerDataProducer(AvroProducer):
             request_type="ticker",  # 고정
             timestamp_ms=int(time.time() * 1000),
             batch_size=len(batch),
-            batch_id=None,
             data=batch,
         )
 

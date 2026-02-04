@@ -30,12 +30,6 @@
       "doc": "배치 내 메시지 개수"
     },
     {
-      "name": "batch_id",
-      "type": ["null", "string"],
-      "default": null,
-      "doc": "배치 고유 ID (선택적)"
-    },
-    {
       "name": "data",
       "type": {
         "type": "array",

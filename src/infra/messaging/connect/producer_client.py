@@ -596,7 +596,6 @@ class RealtimeDataProducer(AvroProducer):
             request_type=scope.request_type,
             timestamp_ms=int(time.time() * 1000),
             batch_size=len(batch),
-            batch_id=None,  # 선택적 필드
             data=batch,  # Ticker/Trade 원본 데이터
         )
 
