@@ -304,11 +304,6 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
     )
 
 
-# ========================================
-# 3-3. Europe Handler Container (유럽 거래소)
-# ========================================
-
-
 
 # ========================================
 # 3-4. North America Handler Container (북미 거래소)
