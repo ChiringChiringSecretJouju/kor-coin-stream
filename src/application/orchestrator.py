@@ -43,7 +43,6 @@ ExchangeSocketHandler: TypeAlias = BaseWebsocketHandler
 SINGLE_SUBSCRIPTION_ONLY: Final[frozenset[str]] = frozenset(
     {
         "coinone",  # 한국 - 단일 심볼만 구독 지원
-        "huobi",  # 아시아 - 단일 심볼만 구독 지원
     }
 )
 
@@ -114,7 +113,7 @@ class StreamOrchestrator:
 
         리팩토링된 버전: 각 컴포넌트의 책임을 명확히 분리
 
-        단일 구독 거래소(Coinone, Huobi) 처리:
+        단일 구독 거래소(Coinone) 처리:
         - 여러 심볼이 있으면 각 심볼마다 별도 연결 생성
         - scope에 symbol 정보 포함하여 Redis 키 충돌 방지
         """

@@ -1,0 +1,20 @@
+{
+    "type": "ticker",
+    "timestamp": 1770640029591,
+    "target_currency": "btc_krw",
+    "snapshot": true,
+    "first": "105210000",
+    "high": "107035000",
+    "low": "101421000",
+    "last": "102500000",
+    "prevClose": "105120000",
+    "priceChange": "-2620000",
+    "priceChangePercent": "-2.49",
+    "target_volume": "42.38320957",
+    "quoteVolume": "4445381237.53388",
+    "bestAskPrice": "102555000",
+    "bestBidPrice": "102389000",
+    "lastTradedAt": 1770639996898,
+    "symbol": "BTC",
+    "quote_currency": "KRW"
+}

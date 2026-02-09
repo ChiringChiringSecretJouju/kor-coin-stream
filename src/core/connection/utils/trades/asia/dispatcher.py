@@ -7,7 +7,6 @@ from typing import Any
 from src.core.connection.utils.parsers.base import TradeParser
 from src.core.connection.utils.trades.asia.binance import BinanceTradeParser
 from src.core.connection.utils.trades.asia.bybit import BybitTradeParser
-from src.core.connection.utils.trades.asia.huobi import HuobiTradeParser
 from src.core.connection.utils.trades.asia.okx import OKXTradeParser
 from src.core.dto.io.realtime import StandardTradeDTO
 
@@ -22,7 +21,6 @@ class AsiaTradeDispatcher:
     def __init__(self) -> None:
         """파서 리스트 초기화 (우선순위 순서)."""
         self._parsers: list[TradeParser] = [
-            HuobiTradeParser(),   # 가장 구체적 (ch + "trade")
             BybitTradeParser(),   # topic + "publicTrade"
             OKXTradeParser(),     # arg.channel == "trades"
             BinanceTradeParser(), # e == "trade"
@@ -45,18 +43,3 @@ class AsiaTradeDispatcher:
                 return parser.parse(message)
         
         raise ValueError(f"Unsupported Asia trade format: {list(message.keys())}")
-
-
-# Module-level 싱글톤 인스턴스 (Thread-safe eager initialization)
-_dispatcher = AsiaTradeDispatcher()
-
-
-def get_asia_trade_dispatcher() -> AsiaTradeDispatcher:
-    """아시아 거래소 Trade 디스패처 싱글톤 인스턴스 반환.
-    
-    Thread-safe한 pre-initialized singleton을 반환합니다.
-    
-    Returns:
-        AsiaTradeDispatcher 인스턴스
-    """
-    return _dispatcher

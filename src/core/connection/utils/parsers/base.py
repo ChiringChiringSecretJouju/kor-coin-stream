@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from src.core.connection._utils import extract_base_currency
-from src.core.dto.io.realtime import StandardTradeDTO
+from src.core.dto.io.realtime import StandardTickerDTO, StandardTradeDTO
 
 
 def parse_symbol(symbol_value: str) -> tuple[str, str | None]:
@@ -105,5 +105,36 @@ class TradeParser(ABC):
 
         Returns:
             표준화된 trade (Pydantic DTO)
+        """
+        pass
+
+
+class TickerParser(ABC):
+    """Ticker 파서 인터페이스.
+
+    Strategy Pattern으로 각 거래소의 Ticker 메시지를 표준 OHLCV 포맷으로 변환합니다.
+    """
+
+    @abstractmethod
+    def can_parse(self, message: dict[str, Any]) -> bool:
+        """파싱 가능 여부 판단.
+
+        Args:
+            message: 원본 메시지
+
+        Returns:
+            파싱 가능하면 True
+        """
+        pass
+
+    @abstractmethod
+    def parse(self, message: dict[str, Any]) -> StandardTickerDTO:
+        """메시지를 표준 Ticker 포맷으로 변환.
+
+        Args:
+            message: 원본 메시지
+
+        Returns:
+            표준화된 ticker (Pydantic DTO)
         """
         pass

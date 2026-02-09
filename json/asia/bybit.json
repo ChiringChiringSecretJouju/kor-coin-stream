@@ -1,0 +1,26 @@
+{
+    "topic": "tickers.ETHUSDT",
+    "ts": 1758682068163,
+    "type": "snapshot",
+    "cs": 139794009342,
+    "data": {
+        "symbol": "ETHUSDT",
+        "lastPrice": "4169.02",
+        "highPrice24h": "4229.44",
+        "lowPrice24h": "4114.58",
+        "prevPrice24h": "4153.91",
+        "volume24h": "117331.35908",
+        "turnover24h": "490419649.1783503",
+        "price24hPcnt": "0.0036",
+        "usdIndexPrice": "4170.010024"
+    },
+    "symbol": "ETHUSDT",
+    "lastPrice": "4169.02",
+    "highPrice24h": "4229.44",
+    "lowPrice24h": "4114.58",
+    "prevPrice24h": "4153.91",
+    "volume24h": "117331.35908",
+    "turnover24h": "490419649.1783503",
+    "price24hPcnt": "0.0036",
+    "usdIndexPrice": "4170.010024"
+}

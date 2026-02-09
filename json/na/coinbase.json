@@ -1,0 +1,19 @@
+{
+    "type": "ticker",
+    "sequence": 87057558152,
+    "product_id": "ETH-USD",
+    "price": "4101.5",
+    "open_24h": "4180.2",
+    "volume_24h": "107761.41654298",
+    "low_24h": "4076",
+    "high_24h": "4233",
+    "volume_30d": "3641467.48387522",
+    "best_bid": "4101.39",
+    "best_bid_size": "0.14262000",
+    "best_ask": "4101.50",
+    "best_ask_size": "0.44972860",
+    "side": "buy",
+    "time": "2025-09-24T04:22:00.543709Z",
+    "trade_id": 703124072,
+    "last_size": "0.76995464"
+}

@@ -13,6 +13,7 @@ from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
 from src.core.connection.utils.parse import update_dict
+from src.core.connection.utils.parsers.base import TickerParser, TradeParser
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     MessageHandler,
@@ -45,6 +46,8 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         heartbeat_message: str | None = None,
         ticker_producer: TickerDataProducer | None = None,
         trade_producer: TradeDataProducer | None = None,
+        trade_dispatcher: TradeParser | None = None,
+        ticker_dispatcher: TickerParser | None = None,
     ) -> None:
         super().__init__(
             exchange_name=exchange_name,
@@ -71,6 +74,10 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
         # 생성한 경우: 내부에서 수명 관리 -> 여기서 stop 호출함
         self._is_shared_producer = ticker_producer is not None and trade_producer is not None
         
+        # DI 주입된 디스패처 (Strategy Pattern)
+        self._trade_dispatcher = trade_dispatcher
+        self._ticker_dispatcher = ticker_dispatcher
+
         self._batch_enabled = True  # 배치 수집 활성화 플래그
 
     def _extract_symbol(self, message: dict[str, Any]) -> str | None:

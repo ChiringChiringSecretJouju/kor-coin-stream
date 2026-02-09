@@ -19,12 +19,10 @@ messaging:
 kafka:  
   status_topic:
     - ws.status.korea
-    - ws.status.na
     - ws.status.asia
   
   disconnection_topic:
     - ws.disconnection.korea
-    - ws.disconnection.na
     - ws.disconnection.asia
   
   event_topic:
@@ -87,25 +85,4 @@ handlers:
     heartbeat_kind: text  # 텍스트 메시지
     heartbeat_message: "ping"
   
-  huobi:
-    enabled: true
-    region: asia
-    heartbeat_kind: text  # 텍스트 메시지 (동적 timestamp)
-    heartbeat_message: '{"ping": 1}'  # 실제로는 동적으로 생성됨
   
-
-  
-  # ========================================
-  # 북미 거래소 (North America)
-  # ========================================
-  coinbase:
-    enabled: true
-    region: na
-    heartbeat_kind: frame  # ping/pong 프레임
-    heartbeat_message: null
-  
-  kraken:
-    enabled: true
-    region: na
-    heartbeat_kind: frame  # ping/pong 프레임
-    heartbeat_message: null

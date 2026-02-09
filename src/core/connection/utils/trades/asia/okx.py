@@ -47,14 +47,7 @@ class OKXTradeParser(TradeParser):
         # data 배열의 첫 번째 요소
         data = message.get("data", [])
         if not data:
-            return StandardTradeDTO(
-                code="UNKNOWN",
-                trade_timestamp=0.0,
-                trade_price=0.0,
-                trade_volume=0.0,
-                ask_bid=1,
-                sequential_id="0",
-            )
+            raise ValueError("OKX trade data is empty")
 
         trade = data[0]
 
@@ -66,8 +59,8 @@ class OKXTradeParser(TradeParser):
         side = 1 if side_raw.lower() == "buy" else -1
 
         # px, sz는 문자열
-        price_str = trade.get("px", "0")
-        size_str = trade.get("sz", "0")
+        price = float(trade.get("px", "0"))
+        volume = float(trade.get("sz", "0"))
 
         # ts는 문자열 (밀리초)
         ts_str = trade.get("ts", "0")
@@ -76,8 +69,9 @@ class OKXTradeParser(TradeParser):
         return StandardTradeDTO(
             code=code,
             trade_timestamp=timestamp / 1000.0,
-            trade_price=float(price_str),
-            trade_volume=float(size_str),
+            trade_price=price,
+            trade_volume=volume,
             ask_bid=side,
             sequential_id=str(trade.get("tradeId", "")),
+            trade_amount=price * volume,
         )

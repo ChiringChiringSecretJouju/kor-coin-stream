@@ -1,0 +1,20 @@
+{
+    "type": "ticker",
+    "target_currency": "KRW-ETH",
+    "trade_timestamp": 1770640017069,
+    "last": 3016000,
+    "first": 3158000,
+    "high": 3185000,
+    "low": 2985000,
+    "change": "FALL",
+    "change_price": 142000,
+    "change_rate": 0.04496517,
+    "trade_volume": 1.8536107,
+    "target_volume": 26633.81469015132,
+    "acc_trade_volume_24h": 29480.669722515628,
+    "acc_trade_price": 81966289284.4621,
+    "acc_trade_price_24h": 90968606347.26996,
+    "timestamp": 1770640017398,
+    "symbol": "ETH",
+    "quote_currency": "KRW"
+}

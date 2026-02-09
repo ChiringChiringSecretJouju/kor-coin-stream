@@ -41,7 +41,7 @@ class ConnectionMetaDomain:
 class ConnectionKeyBuilderDomain:
     """연결 스코프별 Redis 키 빌더.
     
-    - 단일 구독 거래소(Coinone, Huobi)는 symbol이 키에 포함됨
+    - 단일 구독 거래소(Coinone)는 symbol이 키에 포함됨
     - 예: ws:connection:coinone:korea:ticker:BTC
     """
 

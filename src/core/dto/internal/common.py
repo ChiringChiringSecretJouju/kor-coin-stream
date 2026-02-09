@@ -19,7 +19,7 @@ class ConnectionScopeDomain:
 
     - (exchange, region, request_type, symbol?) 조합을 공통 타입으로 정의
     - Redis 키 생성, 캐시 스펙 등에서 재사용
-    - symbol: 단일 구독 전용 거래소(Coinone, Huobi)에서 심볼별 연결 구분에 사용
+    - symbol: 단일 구독 전용 거래소(Coinone)에서 심볼별 연결 구분에 사용
     """
 
     region: Region

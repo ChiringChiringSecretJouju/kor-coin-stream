@@ -70,11 +70,15 @@ class CoinoneTradeParser(TradeParser):
         is_seller_maker: bool = flattened.get("is_seller_maker", False)
         ask_bid = -1 if is_seller_maker else 1
         
+        price = float(flattened["price"])
+        volume = float(flattened["qty"])
+
         return StandardTradeDTO(
             code=code,
             trade_timestamp=float(flattened["timestamp"]) / 1000.0,
-            trade_price=float(flattened["price"]),
-            trade_volume=float(flattened["qty"]),
+            trade_price=price,
+            trade_volume=volume,
             ask_bid=ask_bid,
             sequential_id=str(flattened["id"]),
+            trade_amount=price * volume,
         )

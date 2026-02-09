@@ -21,9 +21,6 @@ ExchangeName: TypeAlias = Literal[
     "gateio",
     "binance",
     "okx",
-    "coinbase",
-    "kraken",
-    "huobi",
 ]
 SocketParams: TypeAlias = dict[str, Any] | list[dict[str, Any]] | list[Any] | list[str]
 

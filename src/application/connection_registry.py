@@ -16,7 +16,6 @@ from src.core.dto.internal.common import ConnectionScopeDomain
 from src.exchange.asia import (
     BinanceWebsocketHandler,
     BybitWebsocketHandler,
-    HuobiWebsocketHandler,
     OKXWebsocketHandler,
 )
 from src.exchange.korea import (
@@ -24,10 +23,6 @@ from src.exchange.korea import (
     CoinoneWebsocketHandler,
     KorbitWebsocketHandler,
     UpbitWebsocketHandler,
-)
-from src.exchange.na import (
-    CoinbaseWebsocketHandler,
-    KrakenWebsocketHandler,
 )
 
 # 거래소 핸들러 타입 (임시 - 실제로는 orchestrator.py에서 import)
@@ -39,9 +34,6 @@ ExchangeSocketHandler: TypeAlias = (
     | BinanceWebsocketHandler
     | BybitWebsocketHandler
     | OKXWebsocketHandler
-    | HuobiWebsocketHandler
-    | CoinbaseWebsocketHandler
-    | KrakenWebsocketHandler
 )
 logger = PipelineLogger.get_logger("connection_registry", "app")
 

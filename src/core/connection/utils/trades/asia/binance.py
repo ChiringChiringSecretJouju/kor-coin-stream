@@ -57,16 +57,17 @@ class BinanceTradeParser(TradeParser):
         side = -1 if is_maker else 1  # maker=sell(-1), taker=buy(1)
         
         # 가격/수량은 문자열 → float
-        price_str = message.get("p", "0")
-        volume_str = message.get("q", "0")
+        price = float(message.get("p", "0"))
+        volume = float(message.get("q", "0"))
         
         return StandardTradeDTO(
             code=code,
             trade_timestamp=float(message.get("T", 0)) / 1000.0,
-            trade_price=float(price_str),
-            trade_volume=float(volume_str),
+            trade_price=price,
+            trade_volume=volume,
             ask_bid=side,
             sequential_id=str(message.get("t", "")),
+            trade_amount=price * volume,
         )
     
     def _format_code(self, symbol: str) -> str:

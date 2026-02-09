@@ -1,7 +1,6 @@
 from .asia import (
     BinanceWebsocketHandler,
     BybitWebsocketHandler,
-    HuobiWebsocketHandler,
     OKXWebsocketHandler,
 )
 from .korea import (
@@ -22,7 +21,6 @@ WKoreanExchangeHandler = (
 WAsianExchangeHandler = (
     BinanceWebsocketHandler
     | BybitWebsocketHandler
-    | HuobiWebsocketHandler
     | OKXWebsocketHandler
 )
 
@@ -36,6 +34,5 @@ __all__ = [
     "WAsianExchangeHandler",
     "BinanceWebsocketHandler",
     "BybitWebsocketHandler",
-    "HuobiWebsocketHandler",
     "OKXWebsocketHandler",
 ]

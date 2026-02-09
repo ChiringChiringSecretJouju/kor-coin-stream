@@ -1,7 +1,7 @@
 """거래소 메시지 전처리 유틸리티.
 
-새로운 파서 시스템(Strategy Pattern)을 사용하여 거래소별 메시지를 표준 포맷으로 변환합니다.
-기존 API와의 하위 호환성을 유지합니다.
+글로벌 거래소(아시아/북미) Ticker용 dict 기반 전처리 함수를 제공합니다.
+Trade 및 한국 거래소 Ticker는 DI Container에서 관리되는 Dispatcher를 통해 처리됩니다.
 """
 
 from typing import Any
@@ -12,20 +12,12 @@ from src.core.connection.utils.timestamp import (
     get_regional_datetime,
     get_regional_timestamp_ms,
 )
-from src.core.connection.utils.trades.asia import get_asia_trade_dispatcher
-from src.core.connection.utils.trades.korea import get_korea_trade_dispatcher
-from src.core.connection.utils.trades.na import get_na_trade_dispatcher
-from src.core.dto.io.realtime import StandardTradeDTO
-
 # Re-export for backward compatibility
 __all__ = [
     "get_regional_timestamp_ms",
     "get_regional_datetime",
     "update_dict",
     "preprocess_ticker_message",
-    "preprocess_trade_message",
-    "preprocess_asia_trade_message",
-    "preprocess_na_trade_message",
 ]
 
 
@@ -38,9 +30,8 @@ _TICKER_FIELD_MAPPING = {
     "currency_pair": "target_currency",
     "s": "target_currency",  # Binance
     "instId": "target_currency",  # OKX
-    "ch": "target_currency",  # Huobi (처리 후)
-    "product_id": "target_currency",  # Coinbase
-    # Kraken은 이미 "symbol" 필드를 사용하므로 추가 매핑 불필요
+    "ch": "target_currency",  # ch 필드 (market.xxx.yyy 형식)
+    "product_id": "target_currency",  # product_id 필드
     "ts": "timestamp",
     "timestamp": "timestamp",
     "time": "timestamp",
@@ -50,8 +41,6 @@ _TICKER_FIELD_MAPPING = {
     "prev_closing_price": "first",
     "o": "first",  # Binance
     "open24h": "first",  # OKX
-    "open_24h": "first",  # Coinbase
-    "bid": "first",  # Kraken (매수 호가를 시가 대용으로 사용)
     "prevPrice24h": "first",  # Bybit (24시간 전 가격을 시가 대용으로 사용)
     "high": "high",
     "high_price": "high",
@@ -59,32 +48,26 @@ _TICKER_FIELD_MAPPING = {
     "h": "high",  # Binance
     "high24h": "high",  # OKX
     "highPrice24h": "high",  # Bybit
-    "high_24h": "high",  # Coinbase
-    # Kraken은 이미 "high" 필드를 사용하므로 추가 매핑 불필요
     "low": "low",
     "low_price": "low",
     "min_price": "low",
     "l": "low",  # Binance
     "low24h": "low",  # OKX
     "lowPrice24h": "low",  # Bybit
-    "low_24h": "low",  # Coinbase
-    # Kraken은 이미 "low" 필드를 사용하므로 추가 매핑 불필요
     "close": "last",
     "closing_price": "last",
     "last_price": "last",
     "trade_price": "last",
     "c": "last",  # Binance
     "last": "last",  # OKX
-    "lastPrice": "last",  # Bybit/Huobi
+    "lastPrice": "last",  # Bybit
     "amount": "target_volume",
-    "volume": "target_volume",  # 공통 (Kraken 포함)
+    "volume": "target_volume",  # 공통
     "acc_trade_volume": "target_volume",
     "base_volume": "target_volume",
     "v": "target_volume",  # Binance
     "vol24h": "target_volume",  # OKX
     "volume24h": "target_volume",  # Bybit
-    "volume_24h": "target_volume",  # Coinbase
-    "price": "last",  # Coinbase Ticker Price
 }
 
 
@@ -142,74 +125,3 @@ def preprocess_ticker_message(
 
     standardized_message["_preprocessed"] = True
     return standardized_message
-
-
-
-
-def preprocess_trade_message(
-    parsed_message: dict[str, Any], projection: list[str] | None
-) -> StandardTradeDTO:
-    """Trade 메시지 전처리 (새로운 파서 시스템 사용 - 한국 거래소).
-
-    모든 한국 거래소의 Trade 데이터를 Upbit 표준 포맷(Pydantic DTO)으로 통일합니다.
-
-    표준 포맷:
-        StandardTradeDTO {
-            code: str,                  # 마켓 코드 ("KRW-BTC" 형식)
-            trade_timestamp: float,     # 체결 타임스탬프 (Unix Seconds, float)
-            trade_price: float,         # 체결 가격
-            trade_volume: float,        # 체결량
-            ask_bid: 1 | -1 | 0,        # 매수/매도 구분 (1=BID, -1=ASK, 0=UNKNOWN)
-            sequential_id: str          # 체결 고유 ID
-        }
-
-    Args:
-        parsed_message: 원본 메시지
-        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
-
-    Returns:
-        표준화된 trade (Pydantic DTO, Upbit 형식)
-    """
-    # 디스패처로 자동 파싱
-    dispatcher = get_korea_trade_dispatcher()
-    return dispatcher.parse(parsed_message)
-
-
-
-
-
-
-def preprocess_asia_trade_message(
-    parsed_message: dict[str, Any], projection: list[str] | None
-) -> StandardTradeDTO:
-    """Trade 메시지 전처리 (새로운 파서 시스템 사용 - 아시아 거래소).
-
-    아시아 거래소(Binance, Bybit, Huobi, OKX)의 Trade 데이터를 표준 포맷으로 통일합니다.
-
-    Args:
-        parsed_message: 원본 메시지
-        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
-
-    Returns:
-        표준화된 trade (Pydantic DTO)
-    """
-    dispatcher = get_asia_trade_dispatcher()
-    return dispatcher.parse(parsed_message)
-
-
-def preprocess_na_trade_message(
-    parsed_message: dict[str, Any], projection: list[str] | None
-) -> StandardTradeDTO:
-    """Trade 메시지 전처리 (새로운 파서 시스템 사용 - 북미 거래소).
-
-    북미 거래소(Coinbase, Kraken)의 Trade 데이터를 표준 포맷으로 통일합니다.
-
-    Args:
-        parsed_message: 원본 메시지
-        projection: 추출할 필드 리스트 (사용하지 않음, 호환성 유지)
-
-    Returns:
-        표준화된 trade (Pydantic DTO)
-    """
-    dispatcher = get_na_trade_dispatcher()
-    return dispatcher.parse(parsed_message)

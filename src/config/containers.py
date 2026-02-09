@@ -4,6 +4,7 @@ Dependency Injection Containers
 이 모듈은 애플리케이션의 모든 의존성을 관리하는 DI 컨테이너를 정의합니다.
 
 아키텍처:
+- DispatcherContainer: 파서 디스패처 (Strategy Pattern, Singleton)
 - InfrastructureContainer: Redis 등 인프라 레이어 + Settings 주입
 - MessagingContainer: Kafka Producers (Resource로 자동 라이프사이클 관리) + Settings 주입
 - HandlerContainer: 거래소 핸들러 팩토리 (FactoryAggregate)
@@ -52,7 +53,6 @@ from src.config.settings import (
 from src.exchange.asia import (
     BinanceWebsocketHandler,
     BybitWebsocketHandler,
-    HuobiWebsocketHandler,
     OKXWebsocketHandler,
 )
 from src.exchange.korea import (
@@ -61,7 +61,10 @@ from src.exchange.korea import (
     KorbitWebsocketHandler,
     UpbitWebsocketHandler,
 )
-from src.exchange.na import CoinbaseWebsocketHandler, KrakenWebsocketHandler
+from src.core.connection.utils.tickers.asia.dispatcher import AsiaTickerDispatcher
+from src.core.connection.utils.tickers.korea.dispatcher import KoreaTickerDispatcher
+from src.core.connection.utils.trades.asia.dispatcher import AsiaTradeDispatcher
+from src.core.connection.utils.trades.korea.dispatcher import KoreaTradeDispatcher
 from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
@@ -79,13 +82,26 @@ HANDLER_CLASS_MAP = {
     "binance": BinanceWebsocketHandler,
     "bybit": BybitWebsocketHandler,
     "okx": OKXWebsocketHandler,
-    "huobi": HuobiWebsocketHandler,
     # 유럽
 
-    # 북미
-    "coinbase": CoinbaseWebsocketHandler,
-    "kraken": KrakenWebsocketHandler,
 }
+
+
+# ========================================
+# 0. Dispatcher Container (파서 디스패처 레이어)
+# ========================================
+class DispatcherContainer(containers.DeclarativeContainer):
+    """파서 디스패처 컨테이너
+
+    Strategy Pattern 기반 디스패처들을 Singleton으로 관리합니다.
+    각 디스패처는 거래소별 파서를 내부적으로 초기화하며,
+    상태가 없으므로 Singleton이 적합합니다.
+    """
+
+    korea_trade_dispatcher = providers.Singleton(KoreaTradeDispatcher)
+    korea_ticker_dispatcher = providers.Singleton(KoreaTickerDispatcher)
+    asia_trade_dispatcher = providers.Singleton(AsiaTradeDispatcher)
+    asia_ticker_dispatcher = providers.Singleton(AsiaTickerDispatcher)
 
 
 # ========================================
@@ -176,6 +192,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
     ticker_producer = providers.Dependency()
     trade_producer = providers.Dependency()
+    trade_dispatcher = providers.Dependency()
+    ticker_dispatcher = providers.Dependency()
 
     upbit = providers.Factory(
         HANDLER_CLASS_MAP["upbit"],
@@ -186,6 +204,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.upbit.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     bithumb = providers.Factory(
@@ -197,6 +217,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.bithumb.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     coinone = providers.Factory(
@@ -208,6 +230,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.coinone.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     korbit = providers.Factory(
@@ -219,6 +243,8 @@ class KoreaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.korbit.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     # 한국 거래소 전용 FactoryAggregate
@@ -240,8 +266,6 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         - Binance (바이낸스)
         - Bybit (바이비트)
         - OKX (오케이엑스)
-        - Huobi (후오비/HTX)
-
     Features:
         - 100% YAML 기반 설정
         - heartbeat 설정 자동 주입
@@ -250,6 +274,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
     ticker_producer = providers.Dependency()
     trade_producer = providers.Dependency()
+    trade_dispatcher = providers.Dependency()
+    ticker_dispatcher = providers.Dependency()
 
     binance = providers.Factory(
         HANDLER_CLASS_MAP["binance"],
@@ -260,6 +286,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.binance.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     bybit = providers.Factory(
@@ -271,6 +299,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.bybit.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     okx = providers.Factory(
@@ -282,17 +312,8 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         heartbeat_message=config.handlers.okx.heartbeat_message,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
-    )
-
-    huobi = providers.Factory(
-        HANDLER_CLASS_MAP["huobi"],
-        exchange_name="huobi",
-        region=config.handlers.huobi.region,
-        request_type=providers.Dependency(),
-        heartbeat_kind=config.handlers.huobi.heartbeat_kind,
-        heartbeat_message=config.handlers.huobi.heartbeat_message,
-        ticker_producer=ticker_producer,
-        trade_producer=trade_producer,
+        trade_dispatcher=trade_dispatcher,
+        ticker_dispatcher=ticker_dispatcher,
     )
 
     # 아시아 거래소 전용 FactoryAggregate
@@ -300,74 +321,26 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         binance=binance,
         bybit=bybit,
         okx=okx,
-        huobi=huobi,
     )
 
 
 
 # ========================================
-# 3-4. North America Handler Container (북미 거래소)
-# ========================================
-class NorthAmericaHandlerContainer(containers.DeclarativeContainer):
-    """북미 거래소 핸들러 컨테이너
-
-    Exchanges:
-        - Coinbase (코인베이스)
-        - Kraken (크라켄)
-
-    Features:
-        - 100% YAML 기반 설정
-        - heartbeat 설정 자동 주입
-    """
-
-    config = providers.Configuration()
-    ticker_producer = providers.Dependency()
-    trade_producer = providers.Dependency()
-
-    coinbase = providers.Factory(
-        HANDLER_CLASS_MAP["coinbase"],
-        exchange_name="coinbase",
-        region=config.handlers.coinbase.region,
-        request_type=providers.Dependency(),
-        heartbeat_kind=config.handlers.coinbase.heartbeat_kind,
-        heartbeat_message=config.handlers.coinbase.heartbeat_message,
-        ticker_producer=ticker_producer,
-        trade_producer=trade_producer,
-    )
-
-    kraken = providers.Factory(
-        HANDLER_CLASS_MAP["kraken"],
-        exchange_name="kraken",
-        region=config.handlers.kraken.region,
-        request_type=providers.Dependency(),
-        heartbeat_kind=config.handlers.kraken.heartbeat_kind,
-        heartbeat_message=config.handlers.kraken.heartbeat_message,
-        ticker_producer=ticker_producer,
-        trade_producer=trade_producer,
-    )
-
-    # 북미 거래소 전용 FactoryAggregate
-    na_handlers = providers.FactoryAggregate(coinbase=coinbase, kraken=kraken)
-
-
-# ========================================
-# 3-5. Unified Handler Container (통합 컨테이너)
+# 3-4. Unified Handler Container (통합 컨테이너)
 # ========================================
 class HandlerContainer(containers.DeclarativeContainer):
     """통합 거래소 핸들러 컨테이너
 
     Features:
-        - 지역별 Container 통합 (Korea, Asia, Europe, NA)
+        - 지역별 Container 통합 (Korea, Asia)
         - 모든 거래소 핸들러를 단일 FactoryAggregate로 제공
         - 100% YAML 기반 DI
 
     Architecture:
         KoreaHandlerContainer (4개)
-        AsiaHandlerContainer (4개)
-        EuropeHandlerContainer (1개)
-        NorthAmericaHandlerContainer (2개)
+        AsiaHandlerContainer (3개)
         ↓
-        handler_factory (통합 - 11개)
+        handler_factory (통합 - 7개)
 
     YAML 설정 예시:
         handlers:
@@ -384,6 +357,7 @@ class HandlerContainer(containers.DeclarativeContainer):
     config = providers.Configuration()
     ticker_producer = providers.Dependency()
     trade_producer = providers.Dependency()
+    dispatchers = providers.DependenciesContainer()
 
     # 지역별 Container 포함
     korea = providers.Container(
@@ -391,20 +365,17 @@ class HandlerContainer(containers.DeclarativeContainer):
         config=config,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=dispatchers.korea_trade_dispatcher,
+        ticker_dispatcher=dispatchers.korea_ticker_dispatcher,
     )
     asia = providers.Container(
         AsiaHandlerContainer,
         config=config,
         ticker_producer=ticker_producer,
         trade_producer=trade_producer,
+        trade_dispatcher=dispatchers.asia_trade_dispatcher,
+        ticker_dispatcher=dispatchers.asia_ticker_dispatcher,
     )
-    north_america = providers.Container(
-        NorthAmericaHandlerContainer,
-        config=config,
-        ticker_producer=ticker_producer,
-        trade_producer=trade_producer,
-    )
-
     # 모든 지역의 핸들러를 통합한 FactoryAggregate
     handler_factory = providers.FactoryAggregate(
         # Korea (4)
@@ -412,14 +383,10 @@ class HandlerContainer(containers.DeclarativeContainer):
         bithumb=korea.bithumb,
         coinone=korea.coinone,
         korbit=korea.korbit,
-        # Asia (4)
+        # Asia (3)
         binance=asia.binance,
         bybit=asia.bybit,
         okx=asia.okx,
-        huobi=asia.huobi,
-        # North America (2)
-        coinbase=north_america.coinbase,
-        kraken=north_america.kraken,
     )
 
 
@@ -446,11 +413,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
     # ===== 하위 컨테이너 포함 =====
     infra = providers.Container(InfrastructureContainer, config=config.infra)
     messaging = providers.Container(MessagingContainer, config=config.messaging)
+    dispatchers = providers.Container(DispatcherContainer)
     handlers = providers.Container(
         HandlerContainer,
         config=config,
         ticker_producer=messaging.ticker_producer,
         trade_producer=messaging.trade_producer,
+        dispatchers=dispatchers,
     )
 
     # ===== Core Components (StreamOrchestrator 의존성) =====

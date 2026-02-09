@@ -1,0 +1,20 @@
+{
+    "type": "ticker",
+    "target_currency": "KRW-XRP",
+    "trade_timestamp": 1770640026071,
+    "last": 2082.0,
+    "first": 2126.0,
+    "high": 2155.0,
+    "low": 2032.0,
+    "change": "FALL",
+    "change_price": 44.0,
+    "change_rate": 0.020696143,
+    "trade_volume": 400.0,
+    "target_volume": 119524556.03544924,
+    "acc_trade_volume_24h": 195727936.81858853,
+    "acc_trade_price": 250695354997.43506,
+    "acc_trade_price_24h": 414265030768.14124,
+    "timestamp": 1770640027102,
+    "symbol": "XRP",
+    "quote_currency": "KRW"
+}

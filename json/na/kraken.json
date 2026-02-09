@@ -1,0 +1,20 @@
+{
+    "channel": "ticker",
+    "type": "update",
+    "data": [
+        {
+            "symbol": "ETH/USD",
+            "bid": 4172.52,
+            "bid_qty": 127.77399116,
+            "ask": 4172.53,
+            "ask_qty": 0.19047987,
+            "last": 4172.53,
+            "volume": 30841.35254853,
+            "vwap": 4158.72,
+            "low": 4075.0,
+            "high": 4234.65,
+            "change": -38.45,
+            "change_pct": -0.91
+        }
+    ]
+}

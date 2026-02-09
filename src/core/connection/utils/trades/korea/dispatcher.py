@@ -45,18 +45,3 @@ class KoreaTradeDispatcher:
                 return parser.parse(message)
         
         raise ValueError(f"Unsupported trade format: {list(message.keys())}")
-
-
-# Module-level 싱글톤 인스턴스 (Thread-safe eager initialization)
-_dispatcher = KoreaTradeDispatcher()
-
-
-def get_korea_trade_dispatcher() -> KoreaTradeDispatcher:
-    """한국 거래소 Trade 디스패처 싱글톤 인스턴스 반환.
-    
-    Thread-safe한 pre-initialized singleton을 반환합니다.
-    
-    Returns:
-        KoreaTradeDispatcher 인스턴스
-    """
-    return _dispatcher

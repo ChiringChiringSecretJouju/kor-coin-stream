@@ -81,7 +81,7 @@ class RealtimeBatchCollector:
         4. market (빗썸 등)
         5. s (바이낸스 등)
         6. instId (OKX 등)
-        7. product_id (Coinbase 등)
+        7. product_id
 
         Args:
             data: 메시지 데이터
@@ -136,7 +136,7 @@ class RealtimeBatchCollector:
                     return ts_val / 1000.0
                 return ts_val
             except (ValueError, TypeError):
-                # ISO 8601 문자열 처리 (Coinbase: "2025-09-24T04:22:00.543709Z")
+                # ISO 8601 문자열 처리 ("2025-09-24T04:22:00.543709Z" 형식)
                 if isinstance(val, str) and ("T" in val):
                     try:
                         # 'Z'를 UTC 오프셋으로 변환하여 fromisoformat 지원

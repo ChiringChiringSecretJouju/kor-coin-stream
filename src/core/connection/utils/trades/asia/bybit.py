@@ -58,15 +58,7 @@ class BybitTradeParser(TradeParser):
         """
         data = message.get("data", [])
         if not data:
-            # 빈 데이터는 기본값 반환 (에러 방지)
-            return StandardTradeDTO(
-                code="UNKNOWN",
-                trade_timestamp=0.0,
-                trade_price=0.0,
-                trade_volume=0.0,
-                ask_bid=1,
-                sequential_id="0",
-            )
+            raise ValueError("Bybit trade data is empty")
 
         trade = data[0]
 
@@ -79,16 +71,17 @@ class BybitTradeParser(TradeParser):
         side = 1 if side_raw.lower() == "buy" else -1
 
         # 가격/수량
-        price_str = trade.get("p", "0")
-        volume_str = trade.get("v", "0")
+        price = float(trade.get("p", "0"))
+        volume = float(trade.get("v", "0"))
 
         return StandardTradeDTO(
             code=code,
             trade_timestamp=float(trade.get("T", 0)) / 1000.0,
-            trade_price=float(price_str),
-            trade_volume=float(volume_str),
+            trade_price=price,
+            trade_volume=volume,
             ask_bid=side,
-            sequential_id=str(trade.get("i", "")),
+            sequential_id=str(trade.get("seq", trade.get("i", "0"))),
+            trade_amount=price * volume,
         )
 
     def _format_code(self, symbol: str) -> str:

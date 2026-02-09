@@ -210,7 +210,7 @@ promting/
 logs/
 .windsurfrules
 case.md
-json
+# json
 benchmarks
 result.md
 result2.md

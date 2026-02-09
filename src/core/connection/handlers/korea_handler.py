@@ -12,7 +12,8 @@ from src.config.settings import kafka_settings, websocket_settings
 from src.core.connection._utils import extract_symbol as _extract_symbol_impl
 from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
-from src.core.connection.utils.parse import preprocess_trade_message, update_dict
+from src.core.connection.utils.parse import update_dict
+from src.core.connection.utils.parsers.base import TickerParser, TradeParser
 from src.core.dto.io.commands import ConnectionTargetDTO
 from src.core.types import (
     MessageHandler,
@@ -45,6 +46,8 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
         heartbeat_message: str | None = None,
         ticker_producer: TickerDataProducer | None = None,
         trade_producer: TradeDataProducer | None = None,
+        trade_dispatcher: TradeParser | None = None,
+        ticker_dispatcher: TickerParser | None = None,
     ) -> None:
         super().__init__(
             exchange_name=exchange_name,
@@ -71,6 +74,10 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
         # 생성한 경우: 내부에서 수명 관리 -> 여기서 stop 호출함
         self._is_shared_producer = ticker_producer is not None and trade_producer is not None
         
+        # DI 주입된 디스패처 (Strategy Pattern)
+        self._trade_dispatcher = trade_dispatcher
+        self._ticker_dispatcher = ticker_dispatcher
+
         self._batch_enabled = True  # 배치 수집 활성화 플래그
 
     # ... (skipping methods until _initialize_batch_system)
@@ -384,10 +391,13 @@ class BaseKoreaWebsocketHandler(BaseWebsocketHandler):
             if isinstance(data_sub, dict):
                 parsed_message = update_dict(parsed_message, "data")
 
-            # 전처리 함수 적용 (거래소별 구조 → 표준 스키마 변환)
-            trade_dto = preprocess_trade_message(
-                parsed_message, projection=self.projection
-            )
+            # DI 주입된 디스패처로 표준 DTO 변환
+            if self._trade_dispatcher is None:
+                raise RuntimeError(
+                    f"{self.scope.exchange}: trade_dispatcher가 주입되지 않았습니다. "
+                    "DI Container 설정을 확인하세요."
+                )
+            trade_dto = self._trade_dispatcher.parse(parsed_message)
 
             # Pydantic DTO → dict 변환 (배치 수집기는 dict 기대)
             filtered_message = trade_dto.model_dump()

@@ -6,7 +6,7 @@ from typing import Any
 
 from src.core.connection.utils.dict_utils import update_dict
 from src.core.connection.utils.parsers.base import TradeParser
-from src.core.dto.io.realtime import StandardTradeDTO
+from src.core.dto.io.realtime import StandardTradeDTO, StreamType
 
 
 class KorbitTradeParser(TradeParser):
@@ -67,13 +67,26 @@ class KorbitTradeParser(TradeParser):
         is_buyer_taker: bool = flattened.get("isBuyerTaker", False)
         ask_bid = 1 if is_buyer_taker else -1
         
+        # snapshot → stream_type
+        snapshot = message.get("snapshot")
+        stream_type: StreamType | None = None
+        if snapshot is True:
+            stream_type = "SNAPSHOT"
+        elif snapshot is False:
+            stream_type = "REALTIME"
+
+        price = float(flattened["price"])
+        volume = float(flattened["qty"])
+
         return StandardTradeDTO(
             code=code,
             trade_timestamp=float(flattened["timestamp"]) / 1000.0,
-            trade_price=float(flattened["price"]),
-            trade_volume=float(flattened["qty"]),
+            trade_price=price,
+            trade_volume=volume,
             ask_bid=ask_bid,
             sequential_id=str(flattened["tradeId"]),
+            trade_amount=price * volume,
+            stream_type=stream_type,
         )
     
     @staticmethod

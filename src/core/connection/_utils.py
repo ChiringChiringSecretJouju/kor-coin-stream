@@ -37,9 +37,9 @@ FIELD_PRIORITIES: Final[tuple[SymbolFieldSpec, ...]] = (
     (("symbol",), True),            # Binance (병합 후)
     (("s",), True),                 # Binance
     (("market",), True),            # Coinone
-    (("product_id",), True),        # Coinbase ⭐ NEW
+    (("product_id",), True),        # product_id 필드
     (("instId",), True),            # OKX (data 병합 후) ⭐ NEW
-    (("ch",), True),                # Huobi ⭐ NEW (특수 처리)
+    (("ch",), True),                # ch 필드 (market.xxx.yyy 형식)
     (("arg", "instId"), True),      # ✅ 추가
 
     # data 블록 내부 필드
@@ -63,13 +63,10 @@ def parse_symbol_pair(symbol: str) -> tuple[str, str]:
     기존 extract_base_currency() 로직을 확장하여 QUOTE도 함께 추출합니다.
     
     지원 포맷:
-    - Kraken:    "BTC/USD"              → ("BTC", "USD")
     - OKX:       "BTC-USDT"             → ("BTC", "USDT")
     - Upbit:     "KRW-BTC"              → ("BTC", "KRW")
     - Coinone:   "btc_krw"              → ("BTC", "KRW")
-    - Coinbase:  "BTC-USD"              → ("BTC", "USD")
-    - Huobi:     "BTCUSDT"              → ("BTC", "USDT")
-    - Huobi ch:  "market.btcusdt.ticker" → ("BTC", "USDT")
+    - Binance:   "BTCUSDT"              → ("BTC", "USDT")
     - Binance:   "ETHBUSD"              → ("ETH", "BUSD")
     
     성능: O(1) ~ O(k), k는 quote suffix 개수 (최대 20개)
@@ -83,18 +80,18 @@ def parse_symbol_pair(symbol: str) -> tuple[str, str]:
     if not isinstance(symbol, str) or not symbol:
         return (symbol.upper() if isinstance(symbol, str) else "", "UNKNOWN")
     
-    # 0. Huobi 특수 처리: "market.btcusdt.ticker" → "btcusdt"
+    # 0. ch 필드 특수 처리: "market.btcusdt.ticker" → "btcusdt"
     if symbol.startswith("market.") and "." in symbol:
         parts = symbol.split(".")
         if len(parts) >= 2:
             symbol = parts[1]  # "btcusdt" 추출
     
-    # 2. 슬래시 구분 - Kraken (O(1))
+    # 2. 슬래시 구분 (O(1))
     if "/" in symbol:
         parts = symbol.split("/", 1)
         return (parts[0].strip().upper(), parts[1].strip().upper())
     
-    # 3. 하이픈 구분 - OKX, Coinbase, Upbit (O(1) regex)
+    # 3. 하이픈 구분 - OKX, Upbit (O(1) regex)
     match = _HYPHEN_PATTERN.match(symbol)
     if match:
         left, right = match.groups()
@@ -112,7 +109,7 @@ def parse_symbol_pair(symbol: str) -> tuple[str, str]:
         parts = symbol.split("_", 1)
         return (parts[0].strip().upper(), parts[1].strip().upper())
     
-    # 5. 붙어있는 형태 - Huobi, Binance (O(k), k=20)
+    # 5. 붙어있는 형태 - Binance (O(k), k=20)
     # Quote suffix 제거 (긴 것부터 매칭)
     if symbol.isupper() and len(symbol) >= 4:
         for suffix in _QUOTE_SUFFIXES:
@@ -142,13 +139,10 @@ def extract_base_currency(symbol: str) -> str:
         기존 코드와의 하위 호환성을 위해 유지됩니다.
     
     지원 포맷:
-    - Kraken:    "BTC/USD"              → "BTC"
     - OKX:       "BTC-USDT"             → "BTC"
     - Upbit:     "KRW-BTC"              → "BTC"
     - Coinone:   "btc_krw"              → "BTC"
-    - Coinbase:  "BTC-USD"              → "BTC"
-    - Huobi:     "BTCUSDT"              → "BTC"
-    - Huobi ch:  "market.btcusdt.ticker" → "BTC"
+    - Binance:   "BTCUSDT"              → "BTC"
     - Binance:   "ETHBUSD"              → "ETH"
     
     Args:
@@ -170,10 +164,8 @@ def extract_quote_currency(symbol: str) -> str:
     지원 포맷:
     - Upbit:     "KRW-BTC"              → "KRW"
     - OKX:       "BTC-USDT"             → "USDT"
-    - Coinbase:  "BTC-USD"              → "USD"
-    - Huobi:     "BTCUSDT"              → "USDT"
+    - Binance:   "BTCUSDT"              → "USDT"
     - Binance:   "ETHBUSD"              → "BUSD"
-    - Kraken:    "BTC/USD"              → "USD"
     - Coinone:   "btc_krw"              → "KRW"
     
     Args:
