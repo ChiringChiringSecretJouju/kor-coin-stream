@@ -3,12 +3,13 @@ from __future__ import annotations
 from fnmatch import fnmatch
 
 AVRO_REQUIRED_TOPIC_PATTERNS: tuple[str, ...] = (
-    "ticker-data.*",
-    "trade-data.*",
-    "ws.connect_success.*",
-    "ws.metrics.reception.*",
-    "ws.metrics.processing.*",
-    "ws.metrics.quality.*",
+    # Avro 스키마/타입 이슈 해결 전까지 강제 Avro 비활성화
+    # "ticker-data.*",
+    # "trade-data.*",
+    # "ws.connect_success.*",
+    # "ws.metrics.reception.*",
+    # "ws.metrics.processing.*",
+    # "ws.metrics.quality.*",
 )
 
 JSON_ONLY_TOPIC_PATTERNS: tuple[str, ...] = (

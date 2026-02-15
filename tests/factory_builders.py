@@ -190,6 +190,30 @@ def build_regional_handler_kwargs_payload(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
+def build_regional_normalize_message_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "root": 1,
+        "data": {"x": 10},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def build_preprocessed_message_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "_preprocessed": True,
+        "symbol": "KRW-BTC",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def build_symbol_data_payload(symbol: str = "BTCUSDT", **overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"symbol": symbol}
+    payload.update(overrides)
+    return payload
+
+
 def build_korbit_command_payload(**overrides: Any) -> dict[str, Any]:
     payload = build_command_payload(
         target=build_connection_target(exchange="korbit"),
@@ -262,5 +286,87 @@ def build_ticker_batch_payload(**overrides: Any) -> list[dict[str, Any]]:
 
 def build_counter_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {"count": 0, "reason": None}
+    payload.update(overrides)
+    return payload
+
+
+def build_reception_metrics_message_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ticket_id": "d84a908b-6d4a-4e53-8754-66531be2974f",
+        "region": "korea",
+        "exchange": "upbit",
+        "request_type": "ticker",
+        "batch": {
+            "ticket_id": "35ef8c4f-f7cb-4fdb-b4f7-c64faf9a81a1",
+            "range_start_ts_kst": 1739600400,
+            "range_end_ts_kst": 1739600460,
+            "bucket_size_sec": 60,
+            "items": [
+                {
+                    "minute_start_ts_kst": 1739600400,
+                    "total_received": 120,
+                    "total_parsed": 118,
+                    "total_parse_failed": 2,
+                    "bytes_received": 20480,
+                }
+            ],
+            "version": 1,
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def build_processing_metrics_message_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ticket_id": "82e9165a-d73e-4a48-9471-3787f8695f3c",
+        "region": "asia",
+        "exchange": "binance",
+        "request_type": "trade",
+        "batch": {
+            "ticket_id": "7f9f84cb-0d7a-478f-b4e6-0f11fc1e674f",
+            "range_start_ts_kst": 1739600400,
+            "range_end_ts_kst": 1739600460,
+            "bucket_size_sec": 60,
+            "items": [
+                {
+                    "minute_start_ts_kst": 1739600400,
+                    "total_processed": 240,
+                    "total_failed": 4,
+                    "details": {"BTCUSDT_COUNT": 160, "ETHUSDT_COUNT": 80},
+                }
+            ],
+            "version": 1,
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def build_quality_metrics_message_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ticket_id": "5f57dc2b-2722-46bc-b8ba-6544b4f9bdca",
+        "region": "na",
+        "exchange": "okx",
+        "request_type": "ticker",
+        "batch": {
+            "ticket_id": "1855e65c-f04a-40f8-85af-7346178fd6ac",
+            "range_start_ts_kst": 1739600400,
+            "range_end_ts_kst": 1739600460,
+            "bucket_size_sec": 60,
+            "items": [
+                {
+                    "minute_start_ts_kst": 1739600400,
+                    "data_completeness": 0.98,
+                    "symbol_coverage": 42,
+                    "avg_latency_ms": 12.3,
+                    "p95_latency_ms": 25.1,
+                    "p99_latency_ms": 32.8,
+                    "health_score": 96.5,
+                }
+            ],
+            "version": 1,
+        },
+    }
     payload.update(overrides)
     return payload

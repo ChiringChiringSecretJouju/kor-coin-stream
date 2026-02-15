@@ -12,7 +12,7 @@
 # ===== Messaging Layer =====
 messaging:
   # Kafka Producer 설정
-  use_avro: true  # 기본 Avro 사용
+  use_avro: false  # Avro 비활성화 (스키마/타입 이슈 해결 전까지)
 
 # ===== Kafka Topics (DI Container 전용) =====
 # Note: Kafka 브로커/Producer/Consumer 설정은 config/infra/kafka.yaml 참조

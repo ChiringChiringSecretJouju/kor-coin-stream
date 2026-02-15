@@ -9,7 +9,7 @@ def _reload_settings_with_env(
     monkeypatch: pytest.MonkeyPatch, env: dict[str, str | None]
 ) -> ModuleType:
     # Clear related envs first to avoid leakage across tests
-    prefixes = ("KAFKA_", "REDIS_", "LOG_", "WS_")
+    prefixes = ("KAFKA_", "REDIS_", "LOG_", "WS_", "FX_")
     for key in list(os.environ.keys()):
         if key.startswith(prefixes):
             monkeypatch.delenv(key, raising=False)
@@ -122,3 +122,29 @@ def test_websocket_settings_env_override(monkeypatch: pytest.MonkeyPatch):
     assert settings.websocket_settings.heartbeat_timeout == 12
     assert settings.websocket_settings.heartbeat_fail_limit == 5
     assert settings.websocket_settings.receive_idle_timeout == 180
+
+
+def test_fx_settings_defaults(monkeypatch: pytest.MonkeyPatch):
+    settings = _reload_settings_with_env(monkeypatch, {})
+
+    assert settings.fx_settings.enabled is True
+    assert settings.fx_settings.ttl_sec > 0
+    assert settings.fx_settings.fallback_usd_krw > 0
+    assert settings.fx_settings.timeout_sec > 0
+
+
+def test_fx_settings_env_override(monkeypatch: pytest.MonkeyPatch):
+    settings = _reload_settings_with_env(
+        monkeypatch,
+        {
+            "FX_ENABLED": "false",
+            "FX_TTL_SEC": "120",
+            "FX_FALLBACK_USD_KRW": "1400.5",
+            "FX_TIMEOUT_SEC": "1.2",
+        },
+    )
+
+    assert settings.fx_settings.enabled is False
+    assert settings.fx_settings.ttl_sec == 120
+    assert settings.fx_settings.fallback_usd_krw == 1400.5
+    assert settings.fx_settings.timeout_sec == 1.2

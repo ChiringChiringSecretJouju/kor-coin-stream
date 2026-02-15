@@ -7,7 +7,9 @@ import pytest
 from src.core.connection.handlers.regional_base import BaseRegionalWebsocketHandler
 from src.core.connection.services.realtime_collection import RealtimeBatchCollector
 from tests.factory_builders import (
+    build_preprocessed_message_payload,
     build_regional_handler_kwargs_payload,
+    build_regional_normalize_message_payload,
     build_socket_params_payload,
 )
 
@@ -36,7 +38,7 @@ def test_normalize_message_merges_data_dict() -> None:
     handler = _build_handler()
     handler.projection = None
 
-    normalized = handler._normalize_message({"root": 1, "data": {"x": 10}})
+    normalized = handler._normalize_message(build_regional_normalize_message_payload())
 
     assert normalized["root"] == 1
     assert normalized["data"] == {"x": 10}
@@ -59,7 +61,7 @@ def test_normalize_message_applies_projection() -> None:
     handler = _build_handler()
     handler.projection = ["x", "y"]
 
-    normalized = handler._normalize_message({"root": 1, "data": {"x": 10}, "y": 20})
+    normalized = handler._normalize_message(build_regional_normalize_message_payload(y=20))
 
     assert normalized == {"x": 10, "y": 20}
 
@@ -67,7 +69,7 @@ def test_normalize_message_applies_projection() -> None:
 def test_prepare_incoming_message_handles_preprocessed_dict() -> None:
     handler = _build_handler()
     prepared, is_preprocessed = handler._prepare_incoming_message(
-        {"_preprocessed": True, "symbol": "KRW-BTC"}
+        build_preprocessed_message_payload()
     )
 
     assert is_preprocessed is True

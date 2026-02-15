@@ -45,11 +45,13 @@ from src.config.init_infra import (
     init_trade_producer,
 )
 from src.config.settings import (
+    fx_settings,
     kafka_settings,
     metrics_settings,
     redis_settings,
     websocket_settings,
 )
+from src.core.connection.services.krw_enrichment import KrwEnrichmentService
 from src.core.connection.utils.market_data.tickers.asia.dispatcher import (
     AsiaTickerDispatcher,
 )
@@ -73,6 +75,7 @@ from src.exchange.korea import (
     KorbitWebsocketHandler,
     UpbitWebsocketHandler,
 )
+from src.infra.fx.fx_rate_service import FxRateService
 from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
@@ -128,8 +131,21 @@ class InfrastructureContainer(containers.DeclarativeContainer):
     # settings.py의 싱글톤 인스턴스들을 Object로 주입
     redis_config = providers.Object(redis_settings)
     websocket_config = providers.Object(websocket_settings)
+    fx_config = providers.Object(fx_settings)
 
     redis_manager = providers.Resource(init_redis)
+    fx_rate_service = providers.Singleton(
+        FxRateService,
+        enabled=fx_config.provided.enabled,
+        ttl_sec=fx_config.provided.ttl_sec,
+        fallback_usd_krw=fx_config.provided.fallback_usd_krw,
+        timeout_sec=fx_config.provided.timeout_sec,
+    )
+    krw_enrichment_service = providers.Singleton(
+        KrwEnrichmentService,
+        fx_rate_service=fx_rate_service,
+        enabled=fx_config.provided.enabled,
+    )
 
 
 # ========================================
@@ -283,6 +299,7 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
     trade_producer = providers.Dependency()
     trade_dispatcher = providers.Dependency()
     ticker_dispatcher = providers.Dependency()
+    krw_enrichment_service = providers.Dependency()
 
     binance = providers.Factory(
         HANDLER_CLASS_MAP["binance"],
@@ -295,6 +312,7 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         trade_producer=trade_producer,
         trade_dispatcher=trade_dispatcher,
         ticker_dispatcher=ticker_dispatcher,
+        krw_enrichment_service=krw_enrichment_service,
     )
 
     bybit = providers.Factory(
@@ -308,6 +326,7 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         trade_producer=trade_producer,
         trade_dispatcher=trade_dispatcher,
         ticker_dispatcher=ticker_dispatcher,
+        krw_enrichment_service=krw_enrichment_service,
     )
 
     okx = providers.Factory(
@@ -321,6 +340,7 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         trade_producer=trade_producer,
         trade_dispatcher=trade_dispatcher,
         ticker_dispatcher=ticker_dispatcher,
+        krw_enrichment_service=krw_enrichment_service,
     )
 
     # 아시아 거래소 전용 FactoryAggregate
@@ -364,6 +384,7 @@ class HandlerContainer(containers.DeclarativeContainer):
     ticker_producer = providers.Dependency()
     trade_producer = providers.Dependency()
     dispatchers = providers.DependenciesContainer()
+    krw_enrichment_service = providers.Dependency()
 
     # 지역별 Container 포함
     korea = providers.Container(
@@ -381,6 +402,7 @@ class HandlerContainer(containers.DeclarativeContainer):
         trade_producer=trade_producer,
         trade_dispatcher=dispatchers.asia_trade_dispatcher,
         ticker_dispatcher=dispatchers.asia_ticker_dispatcher,
+        krw_enrichment_service=krw_enrichment_service,
     )
     # 모든 지역의 핸들러를 통합한 FactoryAggregate
     handler_factory = providers.FactoryAggregate(
@@ -426,6 +448,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ticker_producer=messaging.ticker_producer,
         trade_producer=messaging.trade_producer,
         dispatchers=dispatchers,
+        krw_enrichment_service=infra.krw_enrichment_service,
     )
 
     # ===== Core Components (StreamOrchestrator 의존성) =====

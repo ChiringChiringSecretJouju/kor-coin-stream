@@ -77,9 +77,13 @@ class MetricsProducer(AvroProducer):
         )
 
     async def start_producer(self) -> bool:
-        started = await super().start_producer()
         if not self._use_avro:
-            return started
+            return await super().start_producer()
+        # Avro 모드: base를 JSON으로 시작 (backpressure 인프라용)
+        # 메트릭 데이터 전송은 layer Avro producer가 담당
+        self._use_avro = False
+        base_started = await super().start_producer()
+        self._use_avro = True
         if (
             self._reception_avro is None
             or self._processing_avro is None
@@ -92,12 +96,16 @@ class MetricsProducer(AvroProducer):
         reception_started = await reception_avro.start_producer()
         processing_started = await processing_avro.start_producer()
         quality_started = await quality_avro.start_producer()
-        return started and reception_started and processing_started and quality_started
+        return base_started and reception_started and processing_started and quality_started
 
     async def stop_producer(self) -> None:
-        await super().stop_producer()
         if not self._use_avro:
+            await super().stop_producer()
             return
+        # Avro 모드: base JSON producer (인프라) + layer Avro producer 종료
+        self._use_avro = False
+        await super().stop_producer()
+        self._use_avro = True
         if (
             self._reception_avro is None
             or self._processing_avro is None

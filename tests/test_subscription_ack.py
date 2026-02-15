@@ -7,6 +7,7 @@ from src.core.connection.utils.subscriptions.subscription_ack import (
 from tests.factory_builders import (
     build_subscription_ack_payload_global,
     build_subscription_ack_payload_korea,
+    build_symbol_data_payload,
 )
 
 
@@ -49,7 +50,7 @@ def test_global_subscribed_event_emits_ack() -> None:
 
 def test_global_trade_payload_does_not_skip() -> None:
     decision = decide_global_subscription_ack(
-        build_subscription_ack_payload_global(data={"symbol": "BTCUSDT"})
+        build_subscription_ack_payload_global(data=build_symbol_data_payload())
     )
     assert decision.should_skip_message is False
     assert decision.should_emit_ack is False

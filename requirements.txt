@@ -16,6 +16,7 @@ aiohttp
 setuptools
 cachetools
 pydantic-settings
+forex-python
 pytest
 pytest-asyncio
 aiokafka[gssapi]

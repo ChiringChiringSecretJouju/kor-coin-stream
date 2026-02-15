@@ -1,6 +1,7 @@
 from typing import Any, override
 
 from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
+from src.core.connection.services.krw_enrichment import KrwEnrichmentService
 from src.core.types import TickerResponseData, TradeResponseData
 
 
@@ -12,6 +13,9 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
     """
 
     def __init__(self, *args, **kwargs) -> None:
+        self._krw_enrichment_service: KrwEnrichmentService | None = kwargs.pop(
+            "krw_enrichment_service", None
+        )
         super().__init__(*args, **kwargs)
         # heartbeat는 DI Container에서 주입됨
 
@@ -37,6 +41,11 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
 
         ticker_dto = self._ticker_dispatcher.parse(parsed_message)
         preprocessed_message = ticker_dto.model_dump()
+        if self._krw_enrichment_service is not None:
+            preprocessed_message = await self._krw_enrichment_service.enrich_ticker(
+                preprocessed_message,
+                region=self.scope.region,
+            )
         preprocessed_message["_preprocessed"] = True
         return await super().ticker_message(preprocessed_message)
 
@@ -59,6 +68,11 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
 
         # Pydantic DTO를 dict로 변환 후 _preprocessed 플래그 추가
         preprocessed_message = trade_dto.model_dump()
+        if self._krw_enrichment_service is not None:
+            preprocessed_message = await self._krw_enrichment_service.enrich_trade(
+                preprocessed_message,
+                region=self.scope.region,
+            )
         preprocessed_message["_preprocessed"] = True
         return await super().trade_message(preprocessed_message)
 
@@ -77,6 +91,9 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
     """
 
     def __init__(self, *args, **kwargs) -> None:
+        self._krw_enrichment_service: KrwEnrichmentService | None = kwargs.pop(
+            "krw_enrichment_service", None
+        )
         super().__init__(*args, **kwargs)
         # heartbeat는 DI Container에서 주입됨
 
@@ -104,6 +121,11 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
 
         ticker_dto = self._ticker_dispatcher.parse(parsed_message)
         preprocessed_message = ticker_dto.model_dump()
+        if self._krw_enrichment_service is not None:
+            preprocessed_message = await self._krw_enrichment_service.enrich_ticker(
+                preprocessed_message,
+                region=self.scope.region,
+            )
         preprocessed_message["_preprocessed"] = True
         return await super().ticker_message(preprocessed_message)
 
@@ -128,6 +150,11 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
 
         # Pydantic DTO를 dict로 변환 후 _preprocessed 플래그 추가
         preprocessed_message = trade_dto.model_dump()
+        if self._krw_enrichment_service is not None:
+            preprocessed_message = await self._krw_enrichment_service.enrich_trade(
+                preprocessed_message,
+                region=self.scope.region,
+            )
         preprocessed_message["_preprocessed"] = True
         return await super().trade_message(preprocessed_message)
 
@@ -138,7 +165,6 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
         await super().disconnect()
 
 
-
 class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
     """오케이엑스 거래소 웹소켓 핸들러 (배치 수집 지원)
 
@@ -147,6 +173,9 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
     """
 
     def __init__(self, *args, **kwargs) -> None:
+        self._krw_enrichment_service: KrwEnrichmentService | None = kwargs.pop(
+            "krw_enrichment_service", None
+        )
         super().__init__(*args, **kwargs)
         # heartbeat는 DI Container에서 주입됨
 
@@ -172,6 +201,11 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
 
         ticker_dto = self._ticker_dispatcher.parse(parsed_message)
         preprocessed_message = ticker_dto.model_dump()
+        if self._krw_enrichment_service is not None:
+            preprocessed_message = await self._krw_enrichment_service.enrich_ticker(
+                preprocessed_message,
+                region=self.scope.region,
+            )
         preprocessed_message["_preprocessed"] = True
         return await super().ticker_message(preprocessed_message)
 
@@ -195,6 +229,12 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
 
         # Pydantic DTO를 dict로 변환
         preprocessed_message = trade_dto.model_dump()
+        if self._krw_enrichment_service is not None:
+            preprocessed_message = await self._krw_enrichment_service.enrich_trade(
+                preprocessed_message,
+                region=self.scope.region,
+            )
+        preprocessed_message["_preprocessed"] = True
         return await super().trade_message(preprocessed_message)
 
     @override

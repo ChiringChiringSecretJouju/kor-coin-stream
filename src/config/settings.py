@@ -74,6 +74,7 @@ class AppSettings(BaseSettings):
     환경변수 오버라이드:
         APP_ENV: 실행 환경 (dev, prod, test) (기본: dev)
     """
+
     environment: str = "dev"
     debug: bool = False
 
@@ -112,7 +113,7 @@ class KafkaSettings(BaseSettings):
     batch_size: int | None = None  # 선택사항
     schema_register: str = "http://localhost:8082"
     use_array_format: bool = False  # Array-Format 직렬화 사용 여부
-    
+
     # Kafka 설정은 KAFKA_ prefix를 사용하지만, Global 설정에 포함될 수 있음
     model_config = yaml_settings("KAFKA_")
 
@@ -180,6 +181,24 @@ class MetricsSettings(BaseSettings):
     model_config = yaml_settings("METRICS_")
 
 
+class FxSettings(BaseSettings):
+    """환율(FX) 설정 (환경변수 기반).
+
+    환경변수 오버라이드:
+        FX_ENABLED: 환율 기능 활성화 여부 (기본: true)
+        FX_TTL_SEC: USD/KRW 환율 캐시 TTL (기본: 60초)
+        FX_FALLBACK_USD_KRW: 환율 조회 실패 시 기본값 (기본: 1350.0)
+        FX_TIMEOUT_SEC: 환율 조회 타임아웃 (기본: 2.5초)
+    """
+
+    enabled: bool = True
+    ttl_sec: int = 60
+    fallback_usd_krw: float = 1350.0
+    timeout_sec: float = 2.5
+
+    model_config = yaml_settings("FX_")
+
+
 # ========================================
 # 설정 인스턴스 (싱글톤)
 # ========================================
@@ -190,3 +209,4 @@ kafka_settings = KafkaSettings()
 redis_settings = RedisSettings()
 websocket_settings = WebsocketSettings()
 metrics_settings = MetricsSettings()
+fx_settings = FxSettings()

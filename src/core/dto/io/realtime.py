@@ -42,9 +42,6 @@ SequentialIdStr = Annotated[
 ]
 
 
-
-
-
 # ========================================
 # Trade DTO
 # ========================================
@@ -105,7 +102,7 @@ class StandardTradeDTO(BaseModel):
     )
     ask_bid: StrictInt = Field(
         ...,
-        description='매수/매도 구분 (1=BID, -1=ASK, 0=UNKNOWN)',
+        description="매수/매도 구분 (1=BID, -1=ASK, 0=UNKNOWN)",
         examples=[1],
     )
     sequential_id: SequentialIdStr = Field(
@@ -128,9 +125,37 @@ class StandardTradeDTO(BaseModel):
         description='스트림 유형 ("SNAPSHOT" 또는 "REALTIME")',
         examples=["REALTIME"],
     )
+    trade_price_krw: StrictFloat | None = Field(
+        None,
+        description="체결 가격 KRW 환산값",
+        gt=0.0,
+        examples=[95772340.11],
+    )
+    trade_amount_krw: StrictFloat | None = Field(
+        None,
+        description="체결대금 KRW 환산값",
+        gt=0.0,
+        examples=[27133.56],
+    )
+    fx_rate_usd_krw: StrictFloat | None = Field(
+        None,
+        description="USD/KRW 환율",
+        gt=0.0,
+        examples=[1354.92],
+    )
+    fx_rate_source: StrictStr | None = Field(
+        None,
+        description="환율 소스",
+        examples=["forex-python"],
+    )
+    fx_rate_ts: StrictFloat | None = Field(
+        None,
+        description="환율 조회 시각 (Unix Seconds)",
+        gt=0.0,
+        examples=[1730336862.047],
+    )
 
     model_config = OPTIMIZED_CONFIG
-
 
 
 # ========================================
@@ -241,6 +266,53 @@ class StandardTickerDTO(BaseModel):
         description='스트림 유형 ("SNAPSHOT" 또는 "REALTIME")',
         examples=["REALTIME"],
     )
+    open_krw: StrictFloat | None = Field(
+        None,
+        description="시가 KRW 환산값",
+        ge=0.0,
+        examples=[95210000.0],
+    )
+    high_krw: StrictFloat | None = Field(
+        None,
+        description="고가 KRW 환산값",
+        ge=0.0,
+        examples=[96110000.0],
+    )
+    low_krw: StrictFloat | None = Field(
+        None,
+        description="저가 KRW 환산값",
+        ge=0.0,
+        examples=[94450000.0],
+    )
+    close_krw: StrictFloat | None = Field(
+        None,
+        description="종가/현재가 KRW 환산값",
+        ge=0.0,
+        examples=[95770000.0],
+    )
+    quote_volume_krw: StrictFloat | None = Field(
+        None,
+        description="거래대금 KRW 환산값",
+        ge=0.0,
+        examples=[10555000000.0],
+    )
+    fx_rate_usd_krw: StrictFloat | None = Field(
+        None,
+        description="USD/KRW 환율",
+        gt=0.0,
+        examples=[1354.92],
+    )
+    fx_rate_source: StrictStr | None = Field(
+        None,
+        description="환율 소스",
+        examples=["forex-python"],
+    )
+    fx_rate_ts: StrictFloat | None = Field(
+        None,
+        description="환율 조회 시각 (Unix Seconds)",
+        gt=0.0,
+        examples=[1730336862.047],
+    )
 
     model_config = OPTIMIZED_CONFIG
 
@@ -264,10 +336,6 @@ class RealtimeDataBatchDTO(MarketContextModel):
         - trade-data.{region}
     """
 
-    timestamp_ms: int = Field(
-        ..., description="배치 생성 시각 (Unix timestamp milliseconds)", gt=0
-    )
+    timestamp_ms: int = Field(..., description="배치 생성 시각 (Unix timestamp milliseconds)", gt=0)
     batch_size: int = Field(..., description="배치 크기 (메시지 수)", ge=1)
-    data: list[dict[str, Any]] = Field(
-        ..., description="실시간 데이터 배열 (Ticker/Trade)"
-    )
+    data: list[dict[str, Any]] = Field(..., description="실시간 데이터 배열 (Ticker/Trade)")
