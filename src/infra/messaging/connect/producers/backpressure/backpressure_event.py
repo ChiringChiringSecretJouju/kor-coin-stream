@@ -5,6 +5,7 @@
 
 from src.core.dto.io.events import BackpressureEventDTO, BackpressureStatusDTO
 from src.infra.messaging.connect.producer_client import AvroProducer
+from src.infra.messaging.connect.serialization_policy import resolve_use_avro_for_topic
 
 KeyType = str | bytes | None
 
@@ -29,22 +30,21 @@ class BackpressureEventProducer(AvroProducer):
         ... )
     """
 
-    def __init__(
-        self, topic: str = "ws.backpressure.events", use_avro: bool = False
-    ) -> None:
+    def __init__(self, topic: str = "ws.backpressure.events", use_avro: bool = False) -> None:
         """
         Args:
             topic: 토픽 이름 (기본: ws.backpressure.events)
             use_avro: True면 Avro 직렬화, False면 JSON 직렬화
         """
-        super().__init__(use_avro=use_avro)
+        resolved_use_avro, _ = resolve_use_avro_for_topic(topic, use_avro)
+        super().__init__(use_avro=resolved_use_avro)
         self.topic = topic
 
     async def send_backpressure_event(
         self,
         action: str,
         producer_name: str,
-        status: dict[str, int | float | bool],
+        status: dict[str, object],
         producer_type: str = "AsyncProducerBase",
         message: str | None = None,
         key: KeyType = None,
@@ -62,7 +62,7 @@ class BackpressureEventProducer(AvroProducer):
         Returns:
             전송 성공 여부
         """
-        status_dto = BackpressureStatusDTO(**status)
+        status_dto = BackpressureStatusDTO.model_validate(status)
         event = BackpressureEventDTO(
             action=action,  # type: ignore
             producer_name=producer_name,

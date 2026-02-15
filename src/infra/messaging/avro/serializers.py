@@ -39,12 +39,13 @@ async def get_registry_client() -> AsyncSchemaRegistryClient:
     )
 
 
-def context_topic_from_subject(subject: str) -> str:
-    if subject.endswith("-value"):
-        return subject[:-6]
-    if subject.endswith("-key"):
-        return subject[:-4]
-    return subject
+def _fixed_subject_name_strategy(subject: str):
+    """Return subject strategy that always resolves to the configured subject."""
+
+    def _strategy(_ctx, _schema_name: str) -> str:
+        return subject
+
+    return _strategy
 
 
 @dataclass(slots=True)
@@ -59,13 +60,9 @@ class AsyncBaseAvroHandler:
     """
 
     subject: str
-    _confluent_client: AsyncSchemaRegistryClient | None = field(
-        default=None, init=False
-    )
+    _confluent_client: AsyncSchemaRegistryClient | None = field(default=None, init=False)
     _initialized: bool = field(default=False, init=False)
-    _init_lock: asyncio.Lock = field(
-        default_factory=asyncio.Lock, init=False, repr=False
-    )
+    _init_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
     async def ensure_connection(self) -> AsyncSchemaRegistryClient:
         """Schema Registry 연결 (스키마 조회는 직렬화기가 담당)"""
@@ -94,9 +91,7 @@ class AsyncAvroSerializer(AsyncBaseAvroHandler):
     부모 클래스에서 연결 관리, 자신은 직렬화만 담당
     """
 
-    _confluent_serializer: ConfluentAsyncAvroSerializer | None = field(
-        default=None, init=False
-    )
+    _confluent_serializer: ConfluentAsyncAvroSerializer | None = field(default=None, init=False)
 
     async def ensure_serializer(self) -> ConfluentAsyncAvroSerializer:
         """직렬화기 초기화 (자식 전용 로직)"""
@@ -111,15 +106,15 @@ class AsyncAvroSerializer(AsyncBaseAvroHandler):
         # schema_str 없이 생성 → subject 기반으로 Registry에서 자동 조회
         # use.latest.version=True → 최신 스키마 사용
         # subject.name.strategy: 토픽 이름을 그대로 Subject로 사용 (suffix 없음)
-        
+
         self._confluent_serializer = await ConfluentAsyncAvroSerializer(
             schema_registry_client=confluent_client,
             to_dict=lambda obj, ctx: obj,  # dict 그대로 반환
             conf={
                 "use.latest.version": True,  # 최신 스키마 자동 조회
                 "auto.register.schemas": False,  # 등록된 스키마만 사용
-                # 🚀 토픽명을 그대로 Subject로 사용
-                "subject.name.strategy": lambda ctx, schema: ctx.topic,
+                # 고정 subject 기반 전략 (topic과 독립적인 계약 유지)
+                "subject.name.strategy": _fixed_subject_name_strategy(self.subject),
             },
         )
 
@@ -138,7 +133,7 @@ class AsyncAvroSerializer(AsyncBaseAvroHandler):
             Confluent Wire Format으로 인코딩된 바이트
         """
         serializer = await self.ensure_serializer()
-        context = create_value_context(topic=context_topic_from_subject(self.subject))
+        context = create_value_context(topic=self.subject)
         return await serializer(obj, context.to_confluent_context())
 
 
@@ -150,9 +145,7 @@ class AsyncAvroDeserializer(AsyncBaseAvroHandler):
     부모 클래스에서 연결 관리, 자신은 역직렬화만 담당
     """
 
-    _confluent_deserializer: ConfluentAsyncAvroDeserializer | None = field(
-        default=None, init=False
-    )
+    _confluent_deserializer: ConfluentAsyncAvroDeserializer | None = field(default=None, init=False)
 
     async def ensure_deserializer(self) -> ConfluentAsyncAvroDeserializer:
         """역직렬화기 초기화 (자식 전용 로직)"""
@@ -182,7 +175,7 @@ class AsyncAvroDeserializer(AsyncBaseAvroHandler):
             역직렬화된 딕셔너리 객체
         """
         deserializer = await self.ensure_deserializer()
-        context = create_value_context(topic=context_topic_from_subject(self.subject))
+        context = create_value_context(topic=self.subject)
         return await deserializer(data, context.to_confluent_context())
 
 

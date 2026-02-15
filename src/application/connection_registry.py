@@ -35,6 +35,7 @@ ExchangeSocketHandler: TypeAlias = (
     | BybitWebsocketHandler
     | OKXWebsocketHandler
 )
+ConnectionKey: TypeAlias = tuple[str, str, str, str | None]
 logger = PipelineLogger.get_logger("connection_registry", "app")
 
 
@@ -47,23 +48,44 @@ class ConnectionRegistry:
 
     def __init__(self) -> None:
         """레지스트리 초기화"""
-        self._tasks: dict[tuple[str, str, str], asyncio.Task[None]] = {}
-        self._handlers: dict[tuple[str, str, str], ExchangeSocketHandler] = {}
+        self._tasks: dict[ConnectionKey, asyncio.Task[None]] = {}
+        self._handlers: dict[ConnectionKey, ExchangeSocketHandler] = {}
 
-    def make_key(self, scope: ConnectionScopeDomain) -> tuple[str, str, str]:
+    def make_key(self, scope: ConnectionScopeDomain) -> ConnectionKey:
         """연결 스코프로 레지스트리 키 생성
 
         Args:
             scope: 연결 스코프
 
         Returns:
-            (exchange, region, request_type) 소문자 튜플
+            (exchange, region, request_type, symbol?) 소문자 튜플
         """
+        symbol = scope.symbol.lower() if isinstance(scope.symbol, str) else None
+        return (
+            scope.exchange.lower(),
+            scope.region.lower(),
+            scope.request_type.lower(),
+            symbol,
+        )
+
+    def _base_key(self, scope: ConnectionScopeDomain) -> tuple[str, str, str]:
         return (
             scope.exchange.lower(),
             scope.region.lower(),
             scope.request_type.lower(),
         )
+
+    def _matching_keys(self, scope: ConnectionScopeDomain) -> list[ConnectionKey]:
+        key = self.make_key(scope)
+        if key[3] is not None:
+            return [key]
+
+        base = self._base_key(scope)
+        return [
+            candidate
+            for candidate in self._tasks
+            if candidate[0] == base[0] and candidate[1] == base[1] and candidate[2] == base[2]
+        ]
 
     def is_running(self, scope: ConnectionScopeDomain) -> bool:
         """연결이 실행 중인지 확인
@@ -74,9 +96,10 @@ class ConnectionRegistry:
         Returns:
             실행 중이면 True
         """
-        key = self.make_key(scope)
-        task = self._tasks.get(key)
-        return task is not None and not task.done()
+        return any(
+            (task := self._tasks.get(key)) is not None and not task.done()
+            for key in self._matching_keys(scope)
+        )
 
     def register_connection(
         self,
@@ -105,8 +128,11 @@ class ConnectionRegistry:
         Returns:
             핸들러 인스턴스 또는 None
         """
-        key = self.make_key(scope)
-        return self._handlers.get(key)
+        for key in self._matching_keys(scope):
+            handler = self._handlers.get(key)
+            if handler is not None:
+                return handler
+        return None
 
     def get_task(self, scope: ConnectionScopeDomain) -> asyncio.Task[None] | None:
         """태스크 조회
@@ -117,8 +143,11 @@ class ConnectionRegistry:
         Returns:
             태스크 인스턴스 또는 None
         """
-        key = self.make_key(scope)
-        return self._tasks.get(key)
+        for key in self._matching_keys(scope):
+            task = self._tasks.get(key)
+            if task is not None:
+                return task
+        return None
 
     def unregister_connection(self, scope: ConnectionScopeDomain) -> None:
         """연결 등록 해제
@@ -146,33 +175,32 @@ class ConnectionRegistry:
         Returns:
             종료 성공 여부
         """
-        key = self.make_key(scope)
-        task = self._tasks.get(key)
-        handler = self._handlers.get(key)
-
-        if not task and not handler:
-            logger.info(
-                f"Disconnect ignored (no active connection): {self._format_scope(scope)}"
-            )
+        matching_keys = self._matching_keys(scope)
+        if not matching_keys:
+            logger.info(f"Disconnect ignored (no active connection): {self._format_scope(scope)}")
             return False
 
-        # 핸들러에 종료 요청
-        if handler and hasattr(handler, "request_disconnect"):
-            await handler.request_disconnect(reason=reason)
+        disconnected = False
+        for key in matching_keys:
+            task = self._tasks.get(key)
+            handler = self._handlers.get(key)
 
-        # 태스크 취소
-        if task and not task.done():
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            if handler and hasattr(handler, "request_disconnect"):
+                await handler.request_disconnect(reason=reason)
+
+            if task and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+                disconnected = True
+
+        if disconnected:
             logger.info(
                 f"Disconnect completed: {self._format_scope(scope)}"
                 + (f" (reason: {reason})" if reason else "")
             )
         else:
-            logger.info(
-                f"Disconnect processed: already terminated {self._format_scope(scope)}"
-            )
+            logger.info(f"Disconnect processed: already terminated {self._format_scope(scope)}")
 
         return True
 
@@ -205,7 +233,7 @@ class ConnectionRegistry:
 
         logger.info("All connections shutdown completed")
 
-    def get_active_connections(self) -> list[tuple[str, str, str]]:
+    def get_active_connections(self) -> list[ConnectionKey]:
         """활성 연결 목록 반환
 
         Returns:
@@ -215,4 +243,6 @@ class ConnectionRegistry:
 
     def _format_scope(self, scope: ConnectionScopeDomain) -> str:
         """스코프를 읽기 쉬운 문자열로 변환"""
+        if scope.symbol:
+            return f"{scope.exchange}/{scope.region}/{scope.request_type}/{scope.symbol}"
         return f"{scope.exchange}/{scope.region}/{scope.request_type}"

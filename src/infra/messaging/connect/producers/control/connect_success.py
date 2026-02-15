@@ -4,13 +4,15 @@
 """
 
 from src.core.dto.io.commands import ConnectSuccessEventDTO
+from src.infra.messaging.avro.subjects import CONNECT_SUCCESS_SUBJECT
 from src.infra.messaging.connect.producer_client import AvroProducer
+from src.infra.messaging.connect.serialization_policy import resolve_use_avro_for_topic
 
 KeyType = str | bytes | None
 
 
 class ConnectSuccessEventProducer(AvroProducer):
-    """연결 성공 ACK 이벤트 Producer (리팩토링됨, Avro 직렬화 우선).
+    """연결 성공 ACK 이벤트 Producer (리팩토링됨, Avro 직렬화 기본).
 
     토픽: ws.connect_success.{region} (korea, asia, na, eu)
     키: {exchange}|{region}|{request_type}|{coin_symbol}
@@ -21,14 +23,15 @@ class ConnectSuccessEventProducer(AvroProducer):
     - 부모 클래스 기반 고성능 비동기 처리
     """
 
-    def __init__(self, use_avro: bool = False) -> None:
+    def __init__(self, use_avro: bool = True) -> None:
         """
         Args:
             use_avro: True면 Avro 직렬화, False면 JSON 직렬화
         """
-        super().__init__(use_avro=use_avro)
-        if use_avro:
-            self.enable_avro("connect_success")
+        resolved_use_avro, _ = resolve_use_avro_for_topic("ws.connect_success.korea", use_avro)
+        super().__init__(use_avro=resolved_use_avro)
+        if resolved_use_avro:
+            self.enable_avro(CONNECT_SUCCESS_SUBJECT)
 
     async def send_event(self, event: ConnectSuccessEventDTO, key: KeyType) -> bool:
         """연결 성공 ACK 이벤트 전송.

@@ -50,6 +50,18 @@ from src.config.settings import (
     redis_settings,
     websocket_settings,
 )
+from src.core.connection.utils.market_data.tickers.asia.dispatcher import (
+    AsiaTickerDispatcher,
+)
+from src.core.connection.utils.market_data.tickers.korea.dispatcher import (
+    KoreaTickerDispatcher,
+)
+from src.core.connection.utils.market_data.trades.asia.dispatcher import (
+    AsiaTradeDispatcher,
+)
+from src.core.connection.utils.market_data.trades.korea.dispatcher import (
+    KoreaTradeDispatcher,
+)
 from src.exchange.asia import (
     BinanceWebsocketHandler,
     BybitWebsocketHandler,
@@ -61,10 +73,6 @@ from src.exchange.korea import (
     KorbitWebsocketHandler,
     UpbitWebsocketHandler,
 )
-from src.core.connection.utils.tickers.asia.dispatcher import AsiaTickerDispatcher
-from src.core.connection.utils.tickers.korea.dispatcher import KoreaTickerDispatcher
-from src.core.connection.utils.trades.asia.dispatcher import AsiaTradeDispatcher
-from src.core.connection.utils.trades.korea.dispatcher import KoreaTradeDispatcher
 from src.infra.messaging.connect.consumer_client import KafkaConsumerClient
 from src.infra.messaging.connect.disconnection_consumer import (
     KafkaDisconnectionConsumerClient,
@@ -83,7 +91,6 @@ HANDLER_CLASS_MAP = {
     "bybit": BybitWebsocketHandler,
     "okx": OKXWebsocketHandler,
     # 유럽
-
 }
 
 
@@ -322,7 +329,6 @@ class AsiaHandlerContainer(containers.DeclarativeContainer):
         bybit=bybit,
         okx=okx,
     )
-
 
 
 # ========================================

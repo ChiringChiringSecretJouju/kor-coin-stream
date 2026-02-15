@@ -5,7 +5,9 @@ from typing import Iterable
 
 from src.common.exceptions.error_dispatcher import dispatch_error
 from src.common.logger import PipelineLogger
-from src.core.connection._utils import extract_symbol as _extract_symbol_impl
+from src.core.connection.utils.symbols.symbol_utils import (
+    extract_symbol as _extract_symbol_impl,
+)
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.commands import (
     ConnectionTargetDTO,
@@ -67,9 +69,7 @@ class ConnectSuccessAckEmitter:
             region=self.scope.region,
             request_type=self.scope.request_type,
         )
-        self._observed_key = (
-            f"{self.scope.exchange}/{self.scope.region}/{self.scope.request_type}"
-        )
+        self._observed_key = f"{self.scope.exchange}/{self.scope.region}/{self.scope.request_type}"
 
     async def emit_for_symbols(
         self, symbols: Iterable[str], correlation_id: str | None = None
@@ -91,14 +91,14 @@ class ConnectSuccessAckEmitter:
                     correlation_id=correlation_id or str(uuid.uuid4()),
                 ),
             )
-            key = f"{self._target.exchange}|{self._target.region}|{self._target.request_type}|{coin}"  # noqa: E501
+            key = (
+                f"{self._target.exchange}|{self._target.region}|{self._target.request_type}|{coin}"  # noqa: E501
+            )
             try:
                 await self._producer.send_event(event, key=key)
             except Exception as e:
                 ok = False
-                logger.warning(
-                    f"ACK emit failed: {self._observed_key} symbol={coin} error={e}"
-                )
+                logger.warning(f"ACK emit failed: {self._observed_key} symbol={coin} error={e}")
                 # ACK 전송 실패를 ws.error로도 발행하여 관측 가능성 확보
                 try:
                     context = {
@@ -115,9 +115,7 @@ class ConnectSuccessAckEmitter:
                     )
                 except Exception:
                     # 에러 발행 자체 실패는 무시(로그만 남김)
-                    logger.warning(
-                        f"ACK error emit failed: {self._observed_key} symbol={coin}"
-                    )
+                    logger.warning(f"ACK error emit failed: {self._observed_key} symbol={coin}")
         return ok
 
     async def aclose(self) -> None:

@@ -3,10 +3,13 @@
 토픽: ws.error
 """
 
+from src.common.logger import PipelineLogger
 from src.core.dto.io.events import WsErrorEventDTO
 from src.infra.messaging.connect.producer_client import AvroProducer
+from src.infra.messaging.connect.serialization_policy import resolve_use_avro_for_topic
 
 KeyType = str | bytes | None
+logger = PipelineLogger.get_logger(__name__)
 
 
 class ErrorEventProducer(AvroProducer):
@@ -26,12 +29,15 @@ class ErrorEventProducer(AvroProducer):
             topic: 토픽 이름 (기본: ws.error)
             use_avro: True면 Avro 직렬화, False면 JSON 직렭화
         """
-        super().__init__(use_avro=use_avro)
+        resolved_use_avro, reason = resolve_use_avro_for_topic(topic, use_avro)
+        if reason == "json_only_topic" and use_avro:
+            logger.warning(
+                "ws.error topic has no Avro schema contract. Falling back to JSON serializer."
+            )
+        super().__init__(use_avro=resolved_use_avro)
         self.topic = topic
 
-    async def send_error_event(
-        self, event: WsErrorEventDTO, key: KeyType = None
-    ) -> bool:
+    async def send_error_event(self, event: WsErrorEventDTO, key: KeyType = None) -> bool:
         """에러 이벤트 전송.
 
         Args:

@@ -36,9 +36,9 @@ class CacheCoordinator:
         Returns:
             True 이면 추가 처리(연결 생성)를 스킵, False 이면 계속 진행
         """
-        exchange_name: str = command.target["exchange"]
-        region: str = command.target["region"]
-        request_type: str = command.target["request_type"]
+        exchange_name: str = command.target.exchange
+        region: str = command.target.region
+        request_type: str = command.target.request_type
         symbols: list[str] = command.symbols
 
         if not symbols:
@@ -60,9 +60,7 @@ class CacheCoordinator:
         ):
             try:
                 symbols_data = existing.get("symbols", [])
-                current_symbols = (
-                    set(symbols_data) if isinstance(symbols_data, list) else set()
-                )
+                current_symbols = set(symbols_data) if isinstance(symbols_data, list) else set()
                 requested_symbols = set(symbols)
                 if current_symbols != requested_symbols:
                     await cache.replace_symbols(symbols)

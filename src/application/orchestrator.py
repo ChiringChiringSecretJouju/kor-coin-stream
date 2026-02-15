@@ -15,7 +15,9 @@ from typing import Final, TypeAlias
 from src.application.connection_registry import ConnectionRegistry
 from src.common.logger import PipelineLogger
 from src.core.connection.handlers.base import BaseWebsocketHandler
-from src.core.connection.utils.subscription import extract_subscription_symbols
+from src.core.connection.utils.subscriptions.subscription import (
+    extract_subscription_symbols,
+)
 from src.core.decorators import catch_exception
 from src.core.dto.internal.cache import WebsocketConnectionSpecDomain
 from src.core.dto.internal.common import ConnectionScopeDomain
@@ -51,12 +53,12 @@ class StreamOrchestrator:
     """리팩토링된 스트림 오케스트레이터 (DI 적용)
 
     Dependency Injection으로 모든 의존성을 주입받습니다.
-    
+
     책임:
     - 연결 레지스트리: 태스크/핸들러 관리
     - 에러 코디네이터: 에러 처리 통합
     - 기존 컴포넌트들: 각자의 책임 유지
-    
+
     DI Features:
     - 모든 의존성을 생성자에서 주입
     - 테스트 시 Mock 주입 가능
@@ -70,7 +72,7 @@ class StreamOrchestrator:
         connector: WebsocketConnector,
     ) -> None:
         """오케스트레이터 초기화 (DI)
-        
+
         Args:
             error_producer: 에러 이벤트 프로듀서
             registry: 연결 레지스트리
@@ -89,23 +91,21 @@ class StreamOrchestrator:
 
     async def startup(self) -> None:
         """오케스트레이터 시작 (DI 모드)
-        
+
         Note:
             DI 모드에서는 Resource provider가 자동으로 start_producer를 호출합니다.
             이 메서드는 하위 호환성을 위해 유지하지만, 실제로는 아무 작업도 하지 않습니다.
-            
+
             레거시 모드 (DI 미사용):
                 await orchestrator.startup()  # Producer 수동 시작
-            
+
             DI 모드 (권장):
                 await container.init_resources()  # 모든 Resource 자동 시작
         """
         if not self._producer_started:
             # DI 모드에서는 이미 시작되어 있으므로 플래그만 설정
             self._producer_started = True
-            logger.info(
-                "StreamOrchestrator.startup() called (DI mode: Producer already started)"
-            )
+            logger.info("StreamOrchestrator.startup() called (DI mode: Producer already started)")
 
     @catch_exception(phase="connect_from_context", level="error")
     async def connect_from_context(self, ctx: StreamContextDomain) -> None:
@@ -118,9 +118,7 @@ class StreamOrchestrator:
         - scope에 symbol 정보 포함하여 Redis 키 충돌 방지
         """
         start_time = datetime.now()
-        logger.info(
-            f"{ctx.scope.exchange} 연결 시작: {start_time.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        logger.info(f"{ctx.scope.exchange} 연결 시작: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 0. 단일 구독 거래소 자동 분리 처리
         if ctx.scope.exchange.lower() in SINGLE_SUBSCRIPTION_ONLY:
@@ -144,9 +142,7 @@ class StreamOrchestrator:
 
         # 2. 핸들러 생성 (커넥터 책임)
         handler = await self._connector.create_handler_with(ctx.scope, ctx.projection)
-        logger.info(
-            f"{ctx.scope.exchange} 핸들러 생성: {handler.__class__.__name__}"
-        )
+        logger.info(f"{ctx.scope.exchange} 핸들러 생성: {handler.__class__.__name__}")
 
         # 3. 캐시 준비 (직접 관리)
         spec = WebsocketConnectionSpecDomain(scope=ctx.scope, symbols=ctx.symbols)
@@ -160,7 +156,7 @@ class StreamOrchestrator:
         task = asyncio.create_task(
             self._run_connection_task(ctx, handler, cache),
             name=f"ws-{ctx.scope.exchange}-{ctx.scope.region}-"
-                 f"{ctx.scope.request_type}-{ctx.correlation_id or ''}",
+            f"{ctx.scope.request_type}-{ctx.correlation_id or ''}",
         )
 
         # 5. 레지스트리에 등록
@@ -227,14 +223,10 @@ class StreamOrchestrator:
             await cache.remove_connection()
             self._registry.unregister_connection(ctx.scope)
 
-    @catch_exception(
-        exceptions=RESUBSCRIBE_EXCEPTIONS, 
-        phase="handle_resubscribe", 
-        level="warning"
-    )
+    @catch_exception(exceptions=RESUBSCRIBE_EXCEPTIONS, phase="handle_resubscribe", level="warning")
     async def _handle_resubscribe(self, ctx: StreamContextDomain) -> None:
         """재구독 처리 (내부 메서드)
-        
+
         중복 연결 시 기존 연결에 새로운 심볼을 동적으로 추가합니다.
         """
         handler = self._registry.get_handler(ctx.scope)
@@ -246,11 +238,11 @@ class StreamOrchestrator:
 
         spec = WebsocketConnectionSpecDomain(scope=ctx.scope, symbols=ctx.symbols)
         cache = WebsocketConnectionCache(spec)
-        
+
         # 1. 심볼 추출 (유틸리티 사용)
         symbols: list[str] = []
         subscribe_type: str | None = None
-        
+
         if isinstance(ctx.socket_params, dict):
             symbols = extract_subscription_symbols(ctx.socket_params)
             st = ctx.socket_params.get("subscribe_type")
@@ -290,10 +282,7 @@ class StreamOrchestrator:
             # 재귀 호출하지 않고 직접 연결 로직 수행
             # 중복 연결 확인 (단일 구독 거래소는 재구독 불가)
             if self._registry.is_running(single_ctx.scope):
-                logger.info(
-                    f"  → {symbol}: 이미 연결 중 - 스킵 "
-                    f"(단일 구독 거래소는 재구독 불가)"
-                )
+                logger.info(f"  → {symbol}: 이미 연결 중 - 스킵 (단일 구독 거래소는 재구독 불가)")
                 continue
 
             # 핸들러 생성
@@ -322,9 +311,7 @@ class StreamOrchestrator:
 
             logger.info(f"  → {symbol}: 연결 태스크 시작됨")
 
-    def _add_symbol_to_context(
-        self, ctx: StreamContextDomain, symbol: str
-    ) -> StreamContextDomain:
+    def _add_symbol_to_context(self, ctx: StreamContextDomain, symbol: str) -> StreamContextDomain:
         """컨텍스트에 symbol 정보 추가 (내부 메서드)
 
         Args:
@@ -353,7 +340,7 @@ class StreamOrchestrator:
 # 기존 컴포넌트들 (이미 잘 분리되어 있음 - 그대로 유지)
 class WebsocketConnector:
     """웹소켓 연결 및 핸들러 생성 책임 (DI 지원)
-    
+
     Features:
     - FactoryAggregate 지원: 동적 핸들러 생성
     - 하위 호환성: dict 기반 handler_map도 지원
@@ -380,7 +367,7 @@ class WebsocketConnector:
 
     def get_handler_class(self, exchange: str) -> type[ExchangeSocketHandler] | None:
         """핸들러 클래스 조회 (레거시 호환성)
-        
+
         Note: DI 모드에서는 사용되지 않음 (FactoryAggregate는 클래스를 반환하지 않음)
         """
         return None  # DI 모드에서는 항상 None
@@ -389,19 +376,19 @@ class WebsocketConnector:
         self, scope: ConnectionScopeDomain, projection: list[str] | None = None
     ) -> ExchangeSocketHandler:
         """핸들러 생성 (FactoryAggregate 또는 dict 지원)
-        
+
         Args:
             scope: 연결 스코프
             projection: 프로젝션 필드
-            
+
         Returns:
             생성된 핸들러 인스턴스
-            
+
         Raises:
             ValueError: 지원하지 않는 거래소
         """
         exchange_key = scope.exchange.lower()
-        
+
         # FactoryAggregate인 경우: 함수처럼 호출
         # dict인 경우: 클래스를 가져와서 직접 인스턴스화
         try:
@@ -422,26 +409,22 @@ class WebsocketConnector:
                     exchange_key,
                     request_type=scope.request_type,
                 )
-                
+
                 # Check if handler is a coroutine/future (DI issue safeguard)
                 if asyncio.iscoroutine(handler) or isinstance(handler, asyncio.Future):
                     handler = await handler
-                    
+
         except (KeyError, ValueError, TypeError) as e:
-            raise ValueError(
-                f"Failed to create handler for {scope.exchange}: {e}"
-            ) from e
-        
+            raise ValueError(f"Failed to create handler for {scope.exchange}: {e}") from e
+
         # projection 필드 설정
         if hasattr(handler, "projection"):
             handler.projection = projection
             logger.info(f"{scope.exchange}: Projection set to {projection}")
-        
+
         return handler
 
-    async def run_with(
-        self, ctx: StreamContextDomain, handler: ExchangeSocketHandler
-    ) -> None:
+    async def run_with(self, ctx: StreamContextDomain, handler: ExchangeSocketHandler) -> None:
         await self.run_connection(
             handler=handler,
             url=ctx.url,
@@ -458,9 +441,3 @@ class WebsocketConnector:
         await handler.websocket_connection(
             url=url, parameter_info=socket_params, correlation_id=correlation_id
         )
-
-
-
-
-
-

@@ -12,17 +12,19 @@ from typing import Any
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.realtime import RealtimeDataBatchDTO
 from src.core.types import TradeResponseData
+from src.infra.messaging.avro.subjects import TRADE_DATA_SUBJECT
 from src.infra.messaging.connect.producer_client import AvroProducer
+from src.infra.messaging.connect.serialization_policy import resolve_use_avro_for_topic
 
 KeyType = str | bytes | None
 
 
 class TradeDataProducer(AvroProducer):
-    """Trade 데이터 전용 Producer (Avro 직렬화 우선).
-    
+    """Trade 데이터 전용 Producer (Avro 직렬화 기본).
+
     토픽: trade-data.{region} (korea, asia, na, eu)
     키: {exchange}:{region}:trade
-    
+
     성능 최적화:
     - use_avro=True: trade-data-value 스키마 사용 (기본값)
     - use_avro=False: orjson 기반 JSON 직렬화
@@ -30,21 +32,22 @@ class TradeDataProducer(AvroProducer):
     - Avro 직렬화로 20-40% 메시지 크기 감소
     - asyncio.to_thread() CPU 오프로드
     """
-    
+
     def __init__(self, use_avro: bool = True, use_array_format: bool = False) -> None:
         """
         Args:
             use_avro: True면 Avro 직렬화, False면 JSON 직렬화
             use_array_format: True면 데이터를 배열 포맷 [v, ts, p, q, s, id]으로 변환
         """
-        super().__init__(use_avro=use_avro)
+        resolved_use_avro, _ = resolve_use_avro_for_topic("trade-data.korea", use_avro)
+        super().__init__(use_avro=resolved_use_avro)
         self.use_array_format = use_array_format
-        if use_avro:
-            self.enable_avro("trade-data-value")
-    
+        if resolved_use_avro:
+            self.enable_avro(TRADE_DATA_SUBJECT)
+
     def _transform_to_array_format(self, batch: list[dict[str, Any]]) -> list[list[Any]]:
         """딕셔너리 리스트를 배열 리스트로 변환 (프로토콜 버전 포함).
-        
+
         Format v1: [ver, ts, price, vol, side, id, code]
         - ver: 1 (int)
         - ts: trade_timestamp (float)
@@ -81,7 +84,7 @@ class TradeDataProducer(AvroProducer):
             batch_size=len(batch),
             data=self._transform_to_array_format(batch) if self.use_array_format else batch,
         )
-    
+
     async def send_batch(
         self,
         scope: ConnectionScopeDomain,
@@ -89,12 +92,12 @@ class TradeDataProducer(AvroProducer):
         key: KeyType = None,
     ) -> bool:
         """Trade 배치 전송.
-        
+
         Args:
             scope: 연결 스코프 (exchange, region 포함)
             batch: Trade 데이터 배치
             key: Kafka 키 (None이면 자동 생성)
-            
+
         Returns:
             전송 성공 여부
         """
@@ -111,7 +114,7 @@ class TradeDataProducer(AvroProducer):
             # 실패 시 폴백
             if key is None:
                 key = f"{scope.exchange}:{scope.region}:trade"
-        
+
         message = self._convert_to_dto(scope, batch)
         return await self.produce_sending(
             message=message,

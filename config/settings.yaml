@@ -12,7 +12,7 @@
 # ===== Messaging Layer =====
 messaging:
   # Kafka Producer 설정
-  use_avro: false  # 개발 환경은 JSON (디버깅 용이), 프로덕션은 true
+  use_avro: true  # 기본 Avro 사용
 
 # ===== Kafka Topics (DI Container 전용) =====
 # Note: Kafka 브로커/Producer/Consumer 설정은 config/infra/kafka.yaml 참조

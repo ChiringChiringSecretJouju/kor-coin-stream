@@ -3,15 +3,16 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
-from core.dto.internal.cache import (
+from src.core.dto.internal.cache import (
     ConnectionKeyBuilderDomain,
     WebsocketConnectionSpecDomain,
 )
-from core.dto.internal.common import ConnectionScopeDomain
-from core.types import CONNECTION_STATUS_CONNECTED, CONNECTION_STATUS_CONNECTING
-from infra.cache.cache_client import RedisConnectionManager
-from infra.cache.cache_store import WebsocketConnectionCache
+from src.core.types import CONNECTION_STATUS_CONNECTED, CONNECTION_STATUS_CONNECTING
+from src.infra.cache.cache_client import RedisConnectionManager
+from src.infra.cache.cache_store import WebsocketConnectionCache
+from tests.factory_builders import build_scope_domain
 
 
 class FakeRedis:
@@ -32,9 +33,7 @@ class FakeRedis:
     async def smembers(self, key: str) -> set[str]:
         return set(self._sets.get(key, set()))
 
-    async def eval(
-        self, lua: str, numkeys: int, key: str, ttl: int, *symbols: str
-    ) -> int:
+    async def eval(self, lua: str, numkeys: int, key: str, ttl: int, *symbols: str) -> int:
         # replace semantics: DEL + SADD all + EXPIRE
         self._sets[key] = set(symbols)
         if ttl and ttl > 0:
@@ -82,13 +81,9 @@ async def test_ttl_synced_between_meta_and_symbols(
     fake = FakeRedis()
 
     # Patch RedisConnectionManager.get_instance to return our fake manager
-    monkeypatch.setattr(
-        RedisConnectionManager, "get_instance", lambda: _FakeRedisManager(fake)
-    )
+    monkeypatch.setattr(RedisConnectionManager, "get_instance", lambda: _FakeRedisManager(fake))
 
-    scope = ConnectionScopeDomain(
-        region="korea", exchange="korbit", request_type="ticker"
-    )
+    scope = build_scope_domain(exchange="korbit")
     spec = WebsocketConnectionSpecDomain(scope=scope, symbols=("BTC",))
     cache = WebsocketConnectionCache(spec)
 
@@ -112,13 +107,9 @@ async def test_check_connection_exists_returns_none_on_missing_or_invalid(
 ) -> None:
     # Arrange
     fake = FakeRedis()
-    monkeypatch.setattr(
-        RedisConnectionManager, "get_instance", lambda: _FakeRedisManager(fake)
-    )
+    monkeypatch.setattr(RedisConnectionManager, "get_instance", lambda: _FakeRedisManager(fake))
 
-    scope = ConnectionScopeDomain(
-        region="korea", exchange="korbit", request_type="ticker"
-    )
+    scope = build_scope_domain(exchange="korbit")
     spec = WebsocketConnectionSpecDomain(scope=scope, symbols=("BTC",))
     cache = WebsocketConnectionCache(spec)
 
@@ -140,5 +131,5 @@ async def test_check_connection_exists_returns_none_on_missing_or_invalid(
             "request_type": scope.request_type,
         },
     )
-    res2 = await cache.check_connection_exists()
-    assert res2 is None
+    with pytest.raises(ValidationError):
+        await cache.check_connection_exists()

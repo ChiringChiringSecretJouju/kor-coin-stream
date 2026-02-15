@@ -1,41 +1,25 @@
 from __future__ import annotations
 
-import asyncio
-import time
-from typing import Any
+from typing import Any, cast
 
-import orjson
-
-from src.common.exceptions.error_dispatcher import dispatch_error
-from src.common.logger import PipelineLogger
-from src.config.settings import kafka_settings, websocket_settings
-from src.core.connection._utils import extract_symbol as _extract_symbol_impl
-from src.core.connection.handlers.base import BaseWebsocketHandler
-from src.core.connection.handlers.realtime_collection import RealtimeBatchCollector
-from src.core.connection.utils.parse import update_dict
-from src.core.connection.utils.parsers.base import TickerParser, TradeParser
-from src.core.dto.io.commands import ConnectionTargetDTO
-from src.core.types import (
-    MessageHandler,
-    TickerResponseData,
-    TradeResponseData,
+from src.core.connection.handlers.regional_base import BaseRegionalWebsocketHandler
+from src.core.connection.utils.logging.log_phases import (
+    PHASE_SUBSCRIPTION_ACK,
+    PHASE_TRADE_PROCESS,
 )
+from src.core.connection.utils.market_data.parsers.base import TickerParser, TradeParser
+from src.core.connection.utils.subscriptions.subscription_ack import (
+    decide_global_subscription_ack,
+)
+from src.core.types import TickerResponseData, TradeResponseData
 from src.infra.messaging.connect.producers.realtime.ticker import TickerDataProducer
 from src.infra.messaging.connect.producers.realtime.trade import TradeDataProducer
 
-logger = PipelineLogger.get_logger("websocket_handler", "connection")
 
+class BaseGlobalWebsocketHandler(BaseRegionalWebsocketHandler):
+    """글로벌 거래소 전용 기반 웹소켓 핸들러."""
 
-class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
-    """글로벌 거래소 전용 기반 웹소켓 핸들러
-
-    Features:
-    - 배치 수집 시스템 내장 (분 단위 집계)
-    - 심볼별 메트릭 카운팅
-    - Kafka 배치 전송
-    - 재구독 시 배치 시스템 유지
-    - Heartbeat 설정 DI 지원 (YAML에서 주입)
-    """
+    _batch_profile_name = "Global"
 
     def __init__(
         self,
@@ -53,381 +37,62 @@ class BaseGlobalWebsocketHandler(BaseWebsocketHandler):
             exchange_name=exchange_name,
             region=region,
             request_type=request_type,
+            heartbeat_kind=heartbeat_kind,
+            heartbeat_message=heartbeat_message,
+            ticker_producer=ticker_producer,
+            trade_producer=trade_producer,
+            trade_dispatcher=trade_dispatcher,
+            ticker_dispatcher=ticker_dispatcher,
         )
 
-        # YAML에서 주입된 heartbeat 설정 적용
-        if heartbeat_kind:
-            self.set_heartbeat(kind=heartbeat_kind, message=heartbeat_message)
-        # 글로벌 거래소 기본 설정
-        self.ping_interval = websocket_settings.heartbeat_interval
-        self.projection: list[str] | None = None  # 필드 필터링용
-
-        # 배치 수집기 및 프로듀서
-        self._batch_collector: RealtimeBatchCollector | None = None
-        
-        # DI 주입된 프로듀서 사용 (없으면 _initialize_batch_system에서 생성)
-        self._ticker_producer: TickerDataProducer | None = ticker_producer
-        self._trade_producer: TradeDataProducer | None = trade_producer
-
-        # 프로듀서가 주입되었는지 여부 확인 (라이프사이클 관리용)
-        # 주입된 경우: 외부(Container)에서 수명 관리 -> 여기서 stop 호출 안함
-        # 생성한 경우: 내부에서 수명 관리 -> 여기서 stop 호출함
-        self._is_shared_producer = ticker_producer is not None and trade_producer is not None
-        
-        # DI 주입된 디스패처 (Strategy Pattern)
-        self._trade_dispatcher = trade_dispatcher
-        self._ticker_dispatcher = ticker_dispatcher
-
-        self._batch_enabled = True  # 배치 수집 활성화 플래그
-
-    def _extract_symbol(self, message: dict[str, Any]) -> str | None:
-        """심볼 추출 (위임)"""
-        return _extract_symbol_impl(message)
-
-    def _parse_message(self, message: str | bytes | dict[str, Any]) -> dict[str, Any]:
-        """메시지 파싱 공통 로직 (안전한 JSON 파싱)"""
-        try:
-            # 이미 dict인 경우 그대로 반환
-            if isinstance(message, dict):
-                return message
-
-            if isinstance(message, bytes):
-                decoded = message.decode("utf-8").strip()
-                if not decoded:
-                    logger.debug(f"{self.scope.exchange}: Received empty bytes message")
-                    return {}
-                message_str = decoded
-            elif isinstance(message, str):
-                message_str = message.strip()
-                if not message_str:
-                    logger.debug(
-                        f"{self.scope.exchange}: Received empty string message"
-                    )
-                    return {}
-            else:
-                message_str = str(message).strip()
-
-            # JSON 파싱 시도 (orjson 사용)
-            parsed = orjson.loads(message_str)
-
-            # dict 타입이면 그대로 반환
-            if isinstance(parsed, dict):
-                return parsed
-
-            # list 타입이면 첫 번째 요소가 dict인지 확인
-            elif isinstance(parsed, list):
-                if parsed and isinstance(parsed[0], dict):
-                    # list의 첫 번째 dict를 반환하되, 원본 list 정보도 포함
-                    result = parsed[0].copy()
-                    result["_original_list"] = parsed  # 원본 list 보존
-                    result["_is_list_message"] = True
-                    return result
-                else:
-                    logger.debug(
-                        f"{self.scope.exchange}: List message without dict elements: {parsed}"
-                    )
-                    return {}
-
-            # 기타 타입은 빈 dict 반환
-            else:
-                logger.debug(
-                    f"{self.scope.exchange}: Non-dict/list message: {type(parsed)}"
-                )
-                return {}
-
-        except orjson.JSONDecodeError as e:
-            # JSON이 아닌 메시지는 디버그 레벨로 로깅 (heartbeat는 health_monitor에서 처리)
-            if len(str(message)) < 50:  # 짧은 메시지는 heartbeat일 가능성
-                logger.debug(
-                    f"{self.scope.exchange}: Non-JSON message (likely heartbeat): {message!r}"
-                )
-            else:
-                logger.warning(
-                    f"{self.scope.exchange}: JSON decode error: {e}, message: {message!r}"
-                )
-            return {}
-        except Exception as e:
-            logger.error(
-                f"{self.scope.exchange}: Unexpected parsing error: {e}, message: {message!r}"
+    async def _handle_subscription_ack(self, parsed_message: dict[str, Any]) -> bool:
+        decision = decide_global_subscription_ack(parsed_message)
+        if not decision.should_skip_message:
+            return False
+        if decision.status is not None:
+            self._log_status(decision.status)
+        if decision.reason is not None:
+            self._log_info(
+                "Subscription confirmed",
+                phase=PHASE_SUBSCRIPTION_ACK,
+                reason=decision.reason,
             )
-            # 에러 이벤트 발행 (EDA 패턴, 동기 함수이므로 dispatch_error 사용)
-            asyncio.create_task(
-                dispatch_error(
-                    exc=e,
-                    kind="ws",
-                    target=ConnectionTargetDTO(
-                        exchange=self.scope.exchange,
-                        region=self.scope.region,
-                        request_type=self.scope.request_type,
-                    ),
-                    context={"message": str(message)[:100], "observed_key": "parsing"},
-                )
-            )
-            return {}
-
-    async def _initialize_batch_system(self) -> None:
-        """배치 수집 시스템 초기화 (글로벌 거래소 특화)"""
-        if not self._batch_enabled:
-            return
-        try:
-            # 프로듀서가 없으면 생성 (레거시/독립 모드)
-            if not self._ticker_producer:
-                self._ticker_producer = TickerDataProducer(use_avro=True)
-                await self._ticker_producer.start_producer()
-                
-            if not self._trade_producer:
-                use_array_format = kafka_settings.use_array_format
-                self._trade_producer = TradeDataProducer(
-                    use_avro=False, use_array_format=use_array_format
-                )
-                await self._trade_producer.start_producer()
-
-            # 배치 수집기 초기화 (글로벌 거래소 특화 설정)
-            async def emit_batch(batch: list[dict[str, Any]]) -> bool:
-                """배치 전송 콜백 함수 - 타입별 Producer 선택 및 키 생성"""
-                if not batch:
-                    return False
-
-                request_type = self.scope.request_type
-
-                # 배치 내 첫 번째 메시지에서 심볼 추출 
-                # (RealtimeBatchCollector가 이미 심볼별로 그룹화함)
-                first_msg = batch[0]
-                symbol = self._extract_symbol(first_msg) or "UNKNOWN"
-
-                # Kafka Key 생성: {region}-{exchange}-{type}-{coin}
-                # 예: asia-binance-ticker-BTC
-                kafka_key = f"{self.scope.region}-{self.scope.exchange}-{request_type}-{symbol}"
-
-                if request_type == "ticker" and self._ticker_producer:
-                    return await self._ticker_producer.send_batch(
-                        scope=self.scope, batch=batch, key=kafka_key
-                    )
-                elif request_type == "trade" and self._trade_producer:
-                    return await self._trade_producer.send_batch(
-                        scope=self.scope, batch=batch, key=kafka_key
-                    )
-                return False
-
-            # 글로벌 거래소 특화 배치 설정 (효율적 배치 모드)
-            self._batch_collector = RealtimeBatchCollector(
-                batch_size=30,  # 30개 모이면 전송 (기존 10개에서 상향)
-                time_window=5.0,  # 5초마다 강제 플러시 (기존 0.1초에서 상향)
-                max_batch_size=100,  # 최대 배치 크기
-                emit_factory=emit_batch,
-            )
-
-            # 배치 수집기 시작
-            await self._batch_collector.start()
-
-            logger.info(
-                f"{self.scope.exchange}: Batch collection system initialized "
-                f"(Global optimized, shared_producer={self._is_shared_producer})"
-            )
-
-        except Exception as e:
-            logger.error(
-                f"{self.scope.exchange}: Failed to initialize batch system: {e}"
-            )
-            self._batch_enabled = False
-            # 에러 이벤트 발행 (EDA 패턴)
-            await self._error_handler.emit_ws_error(
-                e,
-                observed_key="batch_system_init",
-                raw_context={"batch_enabled": False},
-            )
-
-    async def _cleanup_batch_system(self) -> None:
-        """배치 수집 시스템 정리"""
-        if self._batch_collector:
-            await self._batch_collector.stop()
-            self._batch_collector = None
-
-        # 공유 프로듀서가 아닌 경우에만 정리
-        if not self._is_shared_producer:
-            if self._ticker_producer:
-                await self._ticker_producer.stop_producer()
-                self._ticker_producer = None
-            if self._trade_producer:
-                await self._trade_producer.stop_producer()
-                self._trade_producer = None
-        else:
-            # 공유 프로듀서는 여기서 정리하지 않음
-            pass
-
-        logger.info(f"{self.scope.exchange}: Batch collection system cleaned up")
-
-    def enable_batch_collection(self) -> None:
-        """배치 수집 활성화"""
-        self._batch_enabled = True
-        logger.info(f"{self.scope.exchange}: Batch collection enabled")
+        if decision.should_emit_ack:
+            await self._emit_connect_success_ack()
+        return True
 
     async def ticker_message(self, message: Any) -> TickerResponseData | None:
-        """티커 메시지 처리 함수 (글로벌 거래소 배치 수집 지원)"""
-        # 자식 클래스에서 전처리된 메시지인지 확인
-        if isinstance(message, dict) and message.get("_preprocessed", False):
-            # 이미 전처리된 메시지 - 플래그만 제거하고 바로 배치 처리
-            filtered_message = message.copy()
-            filtered_message.pop("_preprocessed", None)
-        else:
-            # 기본 처리 (자식 클래스에서 오버라이드하지 않은 경우)
-            parsed_message = (
-                message if isinstance(message, dict) else self._parse_message(message)
-            )
+        prepared, is_preprocessed = self._prepare_incoming_message(message)
+        if prepared is None:
+            return None
 
-            # 빈 메시지나 파싱 실패 시 무시
-            if not parsed_message:
-                return None
+        if await self._should_skip_by_ack(prepared, is_preprocessed, self._handle_subscription_ack):
+            return None
 
-            # 구독 확인 메시지 처리 (글로벌 거래소)
-            if parsed_message.get("result") is not None:
-                # Binance, OKX 등의 result 기반 응답
-                result = parsed_message.get("result")
-                if result == "success":
-                    self._log_status("subscribed")
-                    logger.info(
-                        f"{self.scope.exchange}: Subscription confirmed (result=success)"
-                    )
-                    await self._emit_connect_success_ack()
-                    return None
+        filtered_message = self._normalized_payload(prepared, is_preprocessed)
 
-            event = parsed_message.get("event")
-            if event in ("subscribe", "subscribed"):
-                # Bybit, Gate.io 등의 event 기반 응답
-                logger.info(
-                    f"{self.scope.exchange}: Subscription confirmed (event={event})"
-                )
-                self._log_status("subscribed")
-                await self._emit_connect_success_ack()
-                return None
+        await self._enqueue_batch_message("ticker", filtered_message)
 
-            # data 필드 병합 (중첩 구조 처리)
-            data_sub: dict | None = parsed_message.get("data", None)
-            if isinstance(data_sub, dict):
-                parsed_message = update_dict(parsed_message, "data")
-
-            # projection 필터링 (기본 동작)
-            fields: list[str] | None = self.projection
-            if fields:
-                filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
-            else:
-                filtered_message = parsed_message
-
-            logger.info(
-                f"{self.scope.exchange}: Using default processing (no child preprocessing)"
-            )
-
-        # 배치 수집기에 메시지 추가 (글로벌 거래소 특화)
-        if self._batch_enabled and self._batch_collector:
-            await self._batch_collector.add_message("ticker", filtered_message)
-            logger.debug(
-                f"{self.scope.exchange}: Ticker message added to batch collector"
-            )
-        else:
-            logger.warning(
-                f"""
-                {self.scope.exchange}: Batch collection disabled or not initialized
-                (enabled={self._batch_enabled}, collector={self._batch_collector is not None})
-                """
-            )
-
-        return filtered_message
-
-
+        return cast(TickerResponseData, filtered_message)
 
     async def trade_message(self, message: Any) -> TradeResponseData | None:
-        """체결 메시지 처리 함수 (글로벌 거래소 배치 수집 지원)"""
-        parsed_message = (
-            message if isinstance(message, dict) else self._parse_message(message)
-        )
-
-        # 빈 메시지나 파싱 실패 시 무시
-        if not parsed_message:
+        prepared, is_preprocessed = self._prepare_incoming_message(message)
+        if prepared is None:
             return None
 
-        # 글로벌 거래소 공통 응답 처리
-        logger.debug(
-            f"""
-            {self.scope.exchange}: trade_message received, 
-            keys={list(parsed_message.keys()) if isinstance(parsed_message, dict) else 'not_dict'}
-            """
-        )
-
-        if parsed_message.get("result") is not None:
-            # Binance, OKX 등의 result 기반 응답
-            result = parsed_message.get("result")
-            logger.debug(f"{self.scope.exchange}: result field found: {result}")
-            if result == "success":
-                self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Subscription confirmed (result=success)"
-                )
-                # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-                await self._emit_connect_success_ack()
-                return None
-
-        event = parsed_message.get("event")
-        if event in ("subscribe", "subscribed"):
-            # Bybit, Gate.io 등의 event 기반 응답
-            logger.info(
-                f"{self.scope.exchange}: Subscription confirmed (event={event})"
-            )
-            self._log_status("subscribed")
-            # 구독 확정 시점에서 ACK 보장 (중복 방지는 내부 플래그로 처리)
-            await self._emit_connect_success_ack()
+        if await self._should_skip_by_ack(prepared, is_preprocessed, self._handle_subscription_ack):
             return None
 
-        # data 필드가 있으면 병합
-        data_sub: dict | None = parsed_message.get("data", None)
-        if isinstance(data_sub, dict):
-            parsed_message = update_dict(parsed_message, "data")
-
-        # projection이 지정되면 해당 필드만 추출
-        fields: list[str] | None = self.projection
-        if fields:
-            filtered_message = {field: parsed_message.get(field) for field in fields}  # type: ignore[misc]
+        if is_preprocessed:
+            filtered_message = prepared
         else:
-            filtered_message = parsed_message
+            self._log_debug(
+                "trade_message received",
+                phase=PHASE_TRADE_PROCESS,
+                keys=list(prepared.keys()),
+            )
 
-        # 배치 수집기에 메시지 추가 (글로벌 거래소 특화)
-        if self._batch_enabled and self._batch_collector:
-            await self._batch_collector.add_message("trade", filtered_message)
+            filtered_message = self._normalized_payload(prepared, is_preprocessed)
+        await self._enqueue_batch_message("trade", filtered_message)
 
-        return filtered_message
-
-    async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
-        """메시지 수신 및 처리 루프"""
-        while not self.stop_requested:
-            # 처리 시작 시각 기록 (Latency 측정용)
-            start_time = time.time()
-
-            try:
-                message = await asyncio.wait_for(websocket.recv(), timeout=timeout)
-                # 수신 알림으로 워치독에 최신 수신 시각을 전달
-                self._health_monitor.notify_receive()
-            except asyncio.TimeoutError:
-                # 60초간 데이터가 없더라도 연결 자체는 건강할 수 있음
-                logger.debug(f"{self.scope.exchange}: No data received for {timeout}s (Timeout)")
-                continue
-
-            parsed_message = self._parse_message(message)
-
-            # 심볼 추출 후 분 집계 카운트 증가 (처리 시간 포함)
-            symbol = self._extract_symbol(parsed_message)
-            self._minute_batch_counter.inc(symbol=symbol, start_time=start_time)
-
-            # 실제 메시지에서 심볼 추출 성공 시 ACK 발행 시도 (최초 1회)
-            await self._try_emit_ack_from_message(symbol)
-
-            # 메시지 타입별 핸들러 호출
-            handler_map: MessageHandler = {
-                "ticker": self.ticker_message,
-                "trade": self.trade_message,
-            }
-            fn = handler_map.get(self.scope.request_type)
-            if fn:
-                await fn(parsed_message)
-
-        logger.info(
-            f"{self.scope.exchange}: message loop stopped ({self.scope.request_type})"
-        )
+        return cast(TradeResponseData, filtered_message)

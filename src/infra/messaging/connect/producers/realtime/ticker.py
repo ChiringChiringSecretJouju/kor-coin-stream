@@ -12,13 +12,15 @@ from typing import Any
 from src.core.dto.internal.common import ConnectionScopeDomain
 from src.core.dto.io.realtime import RealtimeDataBatchDTO
 from src.core.types import TickerResponseData
+from src.infra.messaging.avro.subjects import TICKER_DATA_SUBJECT
 from src.infra.messaging.connect.producer_client import AvroProducer
+from src.infra.messaging.connect.serialization_policy import resolve_use_avro_for_topic
 
 KeyType = str | bytes | None
 
 
 class TickerDataProducer(AvroProducer):
-    """Ticker 데이터 전용 Producer (Avro 직렬화 우선).
+    """Ticker 데이터 전용 Producer (Avro 직렬화 기본).
 
     토픽: ticker-data.{region} (korea, asia, na, eu)
     키: {exchange}:{region}:ticker
@@ -36,9 +38,10 @@ class TickerDataProducer(AvroProducer):
         Args:
             use_avro: True면 Avro 직렬화, False면 JSON 직렬화
         """
-        super().__init__(use_avro=use_avro)
-        if use_avro:
-            self.enable_avro("ticker-data-value")
+        resolved_use_avro, _ = resolve_use_avro_for_topic("ticker-data.korea", use_avro)
+        super().__init__(use_avro=resolved_use_avro)
+        if resolved_use_avro:
+            self.enable_avro(TICKER_DATA_SUBJECT)
 
     def _convert_to_dto(
         self, scope: ConnectionScopeDomain, batch: list[dict[str, Any]]
@@ -76,14 +79,14 @@ class TickerDataProducer(AvroProducer):
             if batch and isinstance(batch[0], dict):
                 first_msg = batch[0]
                 symbol = (
-                    first_msg.get("code") or 
-                    first_msg.get("symbol") or 
-                    first_msg.get("market") or 
-                    first_msg.get("s")
+                    first_msg.get("code")
+                    or first_msg.get("symbol")
+                    or first_msg.get("market")
+                    or first_msg.get("s")
                 )
                 if symbol:
                     key = str(symbol).upper()
-            
+
             # 실패 시 폴백
             if key is None:
                 key = f"{scope.exchange}:{scope.region}:ticker"

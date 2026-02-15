@@ -101,6 +101,14 @@ WebSocket 핸들러 (거래소별)
 Kafka Producer (메트릭, 실시간 데이터 발행)
 ```
 
+## 운영 정책 (현재 기준)
+
+- 직렬화 정책은 토픽별 고정(Hybrid)입니다.
+  - Avro required: `ticker-data.*`, `trade-data.*`, `ws.connect_success.*`, `ws.metrics.*`
+  - JSON only: `ws.command`, `ws.error`, `ws.dlq`, `ws.backpressure.events`, `monitoring.batch.performance`
+- `messaging.use_avro=true`일 때 startup preflight를 통해 Avro schema 파일 존재를 검증합니다.
+- Connection 로깅은 structured key(`exchange`, `region`, `request_type`, `phase`)를 사용합니다.
+
 ## 지원 거래소
 
 ### 한국 (4개)
@@ -130,6 +138,25 @@ kor-coin-stream/
 ├─ tests/             # 테스트
 ├─ main.py            # 진입점
 └─ pyproject.toml     # 프로젝트 설정
+```
+
+### Connection 모듈 구조 (리팩토링 반영)
+
+```text
+src/core/connection/
+├─ handlers/   # 연결/수신 루프 오케스트레이션
+├─ services/   # health/error/backoff/realtime batching 런타임 서비스
+├─ emitters/   # connect_success 등 outbound emit
+└─ utils/
+   ├─ logging/       # log phase/constants, logging mixin, pydantic filter
+   ├─ subscriptions/ # subscription merge/ack decision
+   ├─ symbols/       # symbol parsing/extraction
+   └─ market_data/
+      ├─ common/     # parse/dict/time/format helpers
+      ├─ parsers/    # parser base abstractions
+      ├─ dispatch/   # common dispatcher base
+      ├─ tickers/    # ticker parser/dispatcher
+      └─ trades/     # trade parser/dispatcher
 ```
 
 ## 핵심 컴포넌트
@@ -189,3 +216,8 @@ HANDLER_MAP["region"]["new_exchange"] = NewExchangeHandler
 - [Exchange 모듈](src/exchange/README.md)
 - [Common 모듈](src/common/README.md)
 - [Config 모듈](src/config/README.md)
+
+## Refactoring & Ops Docs
+
+- `dataflow-backoffice/docs/kor-stream-coin-docs/operations_checklist.md`
+- `dataflow-backoffice/docs/kor-stream-coin-docs/connection_logging_schema.md`

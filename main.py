@@ -21,6 +21,7 @@ from src.common.events import ErrorEvent, EventBus
 from src.common.exceptions.error_dispatcher import ErrorDispatcher
 from src.common.logger import PipelineLogger
 from src.config.containers import ApplicationContainer
+from src.infra.messaging.avro.preflight import validate_avro_subject_schemas
 
 logger = PipelineLogger.get_logger("main", "app")
 
@@ -49,9 +50,7 @@ class Application:
 
         if not config_file.exists():
             config_file = Path(__file__).parent / "config/settings.yaml"
-            logger.warning(
-                f"환경 설정 파일 {env}.yaml을 찾을 수 없어 settings.yaml을 사용합니다"
-            )
+            logger.warning(f"환경 설정 파일 {env}.yaml을 찾을 수 없어 settings.yaml을 사용합니다")
 
         return config_file
 
@@ -99,6 +98,11 @@ class Application:
         config_path = self._get_config_path()
         logger.info(f"설정 파일 로드: {config_path}")
         self.container.config.from_yaml(str(config_path))
+
+        use_avro = bool(self.container.config.messaging.use_avro())
+        if use_avro:
+            validate_avro_subject_schemas(base_dir=Path(__file__).parent)
+            logger.info("✅ Avro preflight schema check passed")
 
         logger.info("암호화폐 거래소 웹소켓 스트림 파이프라인 시작 (DI 모드)")
 

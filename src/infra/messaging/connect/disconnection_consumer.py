@@ -16,7 +16,7 @@ logger: Final = PipelineLogger.get_logger("consumer", "disconnect")
 
 class KafkaDisconnectionConsumerClient:
     """ws.disconnection 토픽을 소비하여 연결 종료를 지시하는 컨슈머 (리팩토링됨).
-    
+
     - 리팩토링된 JSON 클라이언트 사용 (orjson 기반 고성능 역직렬화)
     - 부모 클래스 기반 비동기 처리 아키텍처
     - 연결 종료 명령 처리 및 오케스트레이터 연동
@@ -55,7 +55,7 @@ class KafkaDisconnectionConsumerClient:
         if self.consumer is None:
             logger.warning("Consumer not initialized")
             return
-        
+
         async for record in self.consumer:
             payload: dict = record["value"]
             exchange = payload.get("target", {}).get("exchange", "")
@@ -86,9 +86,9 @@ class KafkaDisconnectionConsumerClient:
                     continue
 
                 target = ConnectionTargetDTO(
-                    exchange=cast(ExchangeName, dto.target["exchange"]),
-                    region=cast(Region, dto.target["region"]),
-                    request_type=cast(RequestType, dto.target["request_type"]),
+                    exchange=cast(ExchangeName, dto.target.exchange),
+                    region=cast(Region, dto.target.region),
+                    request_type=cast(RequestType, dto.target.request_type),
                 )
 
                 disconnected = await self.orchestrator.disconnect(

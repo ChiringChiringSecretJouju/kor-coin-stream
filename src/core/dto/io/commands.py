@@ -20,18 +20,17 @@ from src.core.types import DEFAULT_SCHEMA_VERSION, ExchangeName, Region, Request
 
 class ConnectionTargetDTO(BaseModel):
     """이벤트 대상(Target) Pydantic v2 모델 (불변, 최적화됨).
-    
+
     거래소, 지역, 요청 타입을 식별하는 핵심 모델입니다.
     frozen=True로 불변성을 보장하여 해시 가능하고 안전합니다.
     """
 
     exchange: ExchangeName = Field(..., description="거래소 (upbit, binance, etc)")
     region: Region = Field(..., description="지역 (korea, asia, etc)")
-    request_type: RequestType = Field(
-        ..., description="요청 타입 (ticker, orderbook, trade)"
-    )
+    request_type: RequestType = Field(..., description="요청 타입 (ticker, orderbook, trade)")
 
     model_config = OPTIMIZED_CONFIG
+
 
 # --- Strict and constrained DTOs for connect-success event ---
 # Pydantic v2: 검증단 빡빡하게 (StrictStr + StringConstraints)
@@ -81,7 +80,7 @@ SchemaVersionStr = Annotated[
 
 class ConnectRequestDTO(BaseIOModelDTO):
     """연결 요청 이벤트 스키마(IO 모델) - 최적화됨.
-    
+
     불변 객체로 안전하게 WebSocket 연결 요청을 표현합니다.
     """
 
@@ -101,13 +100,13 @@ class ConnectionConfigDTO(BaseIOModelDTO):
 
 class CommandDTO(BaseIOModelDTO):
     """명령 스키마(IO 모델) - 최적화됨.
-    
+
     ws.command 토픽에서 수신하는 연결 제어 명령입니다.
     """
 
     type: str = Field(..., description="메시지 타입")
     action: str = Field(..., description="액션 (connect_and_subscribe 등)")
-    target: dict[str, str] = Field(..., description="대상 정보")
+    target: ConnectionTargetDTO = Field(..., description="대상 정보")
     symbols: list[str] = Field(..., description="심볼 목록")
     connection: ConnectionConfigDTO = Field(..., description="연결 설정")
     projection: list[str] | None = Field(None, description="프로젝션 필드")
@@ -124,13 +123,13 @@ class CommandDTO(BaseIOModelDTO):
 
 class DisconnectCommandDTO(BaseIOModelDTO):
     """연결 해제 명령 이벤트 스키마 - 최적화됨.
-    
+
     ws.disconnection 토픽에서 수신하는 연결 종료 명령입니다.
     """
 
     type: str = Field(..., description="메시지 타입")
     action: str = Field(..., description="액션 (disconnect 등)")
-    target: dict[str, str] = Field(..., description="대상 정보")
+    target: ConnectionTargetDTO = Field(..., description="대상 정보")
     reason: str | None = Field(None, description="종료 사유")
     correlation_id: str | None = Field(None, description="상관관계 ID")
     meta: dict[str, Any] | None = Field(None, description="메타데이터")
@@ -144,6 +143,7 @@ class ConnectSuccessMetaDTO(BaseIOModelDTO):
     - correlation_id는 선택(엄격한 문자열 제약)
     """
 
+    ticket_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     schema_version: SchemaVersionStr = DEFAULT_SCHEMA_VERSION
     correlation_id: CorrelationIdStr = Field(default_factory=lambda: str(uuid.uuid4()))
     observed_key: ObservedKeyStr

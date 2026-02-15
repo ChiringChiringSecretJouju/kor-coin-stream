@@ -16,10 +16,10 @@ from src.core.connection.emitters.connect_success_ack_emitter import (
     ConnectSuccessAckEmitter,
     _normalize_coin_symbol,
 )
-from src.core.connection.error_handler import ConnectionErrorHandler
-from src.core.connection.health_monitor import ConnectionHealthMonitor
 from src.core.connection.services.backoff import compute_next_backoff
-from src.core.connection.utils.subscription import (
+from src.core.connection.services.error_handler import ConnectionErrorHandler
+from src.core.connection.services.health_monitor import ConnectionHealthMonitor
+from src.core.connection.utils.subscriptions.subscription import (
     extract_subscription_symbols,
     merge_subscription_params,
 )
@@ -81,7 +81,7 @@ class BaseWebsocketHandler(ABC):
         # 컴포넌트 초기화
         # self._subscription_manager 제거됨 -> 핸들러 직접 관리
         self._last_socket_params: dict[str, Any] | list[Any] | None = None
-        
+
         self._health_monitor = ConnectionHealthMonitor(self.scope, self.policy)
         self._error_handler = ConnectionErrorHandler(self.scope)
 
@@ -167,9 +167,7 @@ class BaseWebsocketHandler(ABC):
         """
         self._health_monitor.update_policy(kind, message, timeout)
 
-    async def _sending_socket_parameter(
-        self, params: dict[str, Any] | list[Any]
-    ) -> str | bytes:
+    async def _sending_socket_parameter(self, params: dict[str, Any] | list[Any]) -> str | bytes:
         """구독 메시지 준비 (orjson 직렬화 직접 수행)"""
         if not params:
             return ""
@@ -184,7 +182,7 @@ class BaseWebsocketHandler(ABC):
         self, symbols: list[str], subscribe_type: str | None = None
     ) -> None:
         """실행 중 구독 심볼을 동적으로 추가합니다 (Zero-Downtime).
-        
+
         Algorithm:
             1. State Update: 현재 파라미터(_last_socket_params)에 새 심볼 병합.
             2. Check State: 연결된 상태라면 즉시 구독 메시지 전송.
@@ -199,9 +197,8 @@ class BaseWebsocketHandler(ABC):
             # 만약 subscribe_type이 주어졌다면 업데이트 (일부 거래소용)
             if subscribe_type and isinstance(merged_params, dict):
                 merged_params["subscribe_type"] = subscribe_type
-                
+
             self._last_socket_params = merged_params
-            logger.info(f"{self.scope.exchange}: Subscription params merged with {symbols}")
         except Exception as e:
             logger.warning(f"{self.scope.exchange}: Merge params failed - {e}")
             return
@@ -214,15 +211,8 @@ class BaseWebsocketHandler(ABC):
                 # 대부분의 거래소는 추가 구독 시 전체 리스트를 보내도 안전함
                 msg = await self._sending_socket_parameter(self._last_socket_params)
                 await websocket.send(msg)
-                logger.info(f"{self.scope.exchange}: Dynamic subscription sent")
             except Exception as e:
-                logger.warning(
-                    f"{self.scope.exchange}: Dynamic subscription send failed - {e}"
-                )
-        else:
-            logger.info(
-                f"{self.scope.exchange}: Not connected, params updated for next connection"
-            )
+                logger.warning(f"{self.scope.exchange}: Dynamic subscription send failed - {e}")
 
     async def update_subscription_raw(self, params: dict[str, Any] | list[Any]) -> None:
         """원본 파라미터를 그대로 재전송하여 재구독합니다."""
@@ -236,12 +226,11 @@ class BaseWebsocketHandler(ABC):
             await websocket.send(msg)
             # 상태 업데이트
             self._last_socket_params = params
-            logger.info(f"{self.scope.exchange}: 재구독(raw) 메시지 전송 완료")
         except Exception as e:
             logger.warning(f"{self.scope.exchange}: 재구독(raw) 전송 실패 - {e}")
             await self._error_handler.emit_subscription_error(
                 e,
-                symbols=None, # raw params라 심볼 목록을 바로 알기 어려움 (추출 필요 시 유틸 사용)
+                symbols=None,  # raw params라 심볼 목록을 바로 알기 어려움 (추출 필요 시 유틸 사용)
             )
 
     async def _batch_flush(self) -> None:
@@ -304,14 +293,12 @@ class BaseWebsocketHandler(ABC):
         attempt = 0
         while not self._stop_requested:
             self._log_status("connecting")
-            logger.info(f"{self.scope.exchange}: 연결 시도 중... {url}")
             try:
                 async with websockets.connect(uri=url, ping_interval=None) as websocket:
                     if self._stop_requested:
                         await websocket.close()
                         break
 
-                    logger.info(f"{self.scope.exchange}: 연결 성공")
                     self._log_status("connected")
                     attempt = 0  # 성공적으로 연결되었으므로 백오프 시도횟수 리셋
                     self._stop_requested = False
@@ -333,8 +320,8 @@ class BaseWebsocketHandler(ABC):
                     self._last_socket_params = socket_parameters
 
                     # 구독 파라미터 전송
-                    subscription_message: str | bytes = (
-                        await self._sending_socket_parameter(socket_parameters)
+                    subscription_message: str | bytes = await self._sending_socket_parameter(
+                        socket_parameters
                     )
                     await websocket.send(subscription_message)
 
@@ -342,38 +329,26 @@ class BaseWebsocketHandler(ABC):
                     await self._emit_connect_success_ack()
 
                     # 하트비트/워치독 태스크 시작
-                    ping_interval = getattr(
-                        self, "ping_interval", DEFAULT_PING_INTERVAL
-                    )
+                    ping_interval = getattr(self, "ping_interval", DEFAULT_PING_INTERVAL)
                     # 헬스 모니터링 시작
-                    await self._health_monitor.start_monitoring(
-                        websocket, ping_interval
-                    )
+                    await self._health_monitor.start_monitoring(websocket, ping_interval)
                     await self._handle_message_loop(websocket, timeout)
 
                     # 정상 종료 혹은 외부 요청에 의한 종료
                     break
             except asyncio.CancelledError:
-                logger.info(f"{self.scope.exchange}: 연결 작업이 취소되었습니다.")
                 self._log_status("cancelled")
                 raise
             except SOCKET_EXCEPTIONS as e:
                 if self._stop_requested:
-                    logger.info(
-                        f"{self.scope.exchange}: disconnect flow stopped reconnection (reason: {e})"
-                    )
                     break
 
                 self._log_status("disconnected")
-                logger.warning(
-                    f"{self.scope.exchange}: 연결이 끊겼습니다. 재시도합니다. 이유: {e}"
-                )
+                logger.warning(f"{self.scope.exchange}: 연결이 끊겼습니다. 재시도합니다. 이유: {e}")
                 attempt += 1
-                
+
                 # Smart Backoff (Decorrelated Jitter + Circuit Breaker)
-                backoff_delay = compute_next_backoff(
-                    self.policy, attempt - 1, self._last_backoff
-                )
+                backoff_delay = compute_next_backoff(self.policy, attempt - 1, self._last_backoff)
                 self._last_backoff = backoff_delay  # 다음 계산을 위해 저장
 
                 # ws 경계 예외를 에러 토픽으로 발행
@@ -401,14 +376,10 @@ class BaseWebsocketHandler(ABC):
                     self._stop_requested = True
                     break
 
-                logger.info(
-                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 (attempt={attempt})"
-                )
                 self._backoff_task = asyncio.create_task(asyncio.sleep(backoff_delay))
                 try:
                     await self._backoff_task
                 except asyncio.CancelledError:
-                    logger.info(f"{self.scope.exchange}: 재접속 대기 중단")
                     if self._stop_requested:
                         break
                     raise
@@ -417,21 +388,14 @@ class BaseWebsocketHandler(ABC):
             except Exception as e:
                 # 예기치 못한 오류도 ws.error로 발행하고 재시도 흐름을 동일하게 적용
                 if self._stop_requested:
-                    logger.info(
-                        f"{self.scope.exchange}: disconnect flow stopped reconnection (reason: {e})"
-                    )
                     break
 
                 self._log_status("disconnected")
-                logger.error(
-                    f"{self.scope.exchange}: unexpected error in connection loop - {e}"
-                )
+                logger.error(f"{self.scope.exchange}: unexpected error in connection loop - {e}")
                 attempt += 1
 
                 # Smart Backoff (Decorrelated Jitter + Circuit Breaker)
-                backoff_delay = compute_next_backoff(
-                    self.policy, attempt - 1, self._last_backoff
-                )
+                backoff_delay = compute_next_backoff(self.policy, attempt - 1, self._last_backoff)
                 self._last_backoff = backoff_delay
 
                 await self._error_handler.emit_ws_error(
@@ -462,14 +426,10 @@ class BaseWebsocketHandler(ABC):
                     self._stop_requested = True
                     break
 
-                logger.info(
-                    f"{self.scope.exchange}: {backoff_delay:.2f}s 후 재접속 (attempt={attempt})"
-                )
                 self._backoff_task = asyncio.create_task(asyncio.sleep(backoff_delay))
                 try:
                     await self._backoff_task
                 except asyncio.CancelledError:
-                    logger.info(f"{self.scope.exchange}: 재접속 대기 중단")
                     if self._stop_requested:
                         break
                     raise
@@ -485,30 +445,27 @@ class BaseWebsocketHandler(ABC):
 
     async def _try_emit_ack_from_message(self, symbol: str | None) -> None:
         """메시지에서 추출된 심볼로 ACK 발행 시도 (심볼별 1회만).
-        
+
         Args:
             symbol: 추출된 심볼 ("BTC_COUNT" 형식)
         """
         if not symbol or not symbol.endswith("_COUNT"):
             return
-        
+
         # "BTC_COUNT" → "BTC" 변환
         coin = symbol[:-6]
-        
+
         # 이미 ACK 발행한 심볼이면 스킵
         if coin in self._cached_symbols:
             return
-        
+
         # 새로운 심볼 발견 → 캐시에 추가 및 즉시 ACK 발행
         self._cached_symbols.add(coin)
-        logger.info(
-            f"{self.scope.exchange}: New symbol extracted: {coin}, sending ACK immediately"
-        )
         await self._emit_single_symbol_ack(coin)
 
     async def _emit_single_symbol_ack(self, coin: str) -> None:
         """단일 심볼에 대한 ACK 이벤트 발행.
-        
+
         Args:
             coin: 정규화된 심볼 ("BTC" 형식)
         """
@@ -516,20 +473,16 @@ class BaseWebsocketHandler(ABC):
             await self._ack_emitter.emit_for_symbols(
                 [coin], correlation_id=self._current_correlation_id
             )
-            logger.info(f"{self.scope.exchange}: ACK sent for symbol: {coin}")
         except Exception as ack_e:
-            logger.warning(
-                f"{self.scope.exchange}: ACK 전송 실패 (symbol={coin}) - {ack_e}"
-            )
+            logger.warning(f"{self.scope.exchange}: ACK 전송 실패 (symbol={coin}) - {ack_e}")
 
     async def _emit_connect_success_ack(self) -> None:
         """연결 성공(구독 확정) 시 심볼별 ACK 이벤트를 발행합니다.
-        
+
         구독 확인 메시지(SUBSCRIBED 등)에서 호출되며, socket_parameters에서 심볼 추출을 시도합니다.
         추출 실패 시 실제 데이터 메시지에서 점진적으로 추출합니다.
         """
         if self._ack_sent:
-            logger.debug(f"{self.scope.exchange}: ACK process already initiated, skipping")
             return
 
         # socket_parameters에서 심볼 추출 시도
@@ -538,37 +491,24 @@ class BaseWebsocketHandler(ABC):
             params = self._last_socket_params
             if params:
                 symbols = extract_subscription_symbols(params)
-                logger.info(
-                    f"{self.scope.exchange}: Extracted symbols from params: {symbols}"
-                )
             else:
                 symbols = []
         except Exception as e:
             logger.warning(f"{self.scope.exchange}: 심볼 추출 실패 - {e}")
             symbols = []
-        
+
         if not symbols:
             # 추출 실패 → 실제 데이터 메시지에서 점진적으로 추출
-            logger.info(
-                f"{self.scope.exchange}: No symbols from socket_parameters, "
-                "will extract from data messages"
-            )
             self._ack_sent = True  # 재시도 방지
             return
 
-        # 추출 성공 → 각 심볼에 대해 ACK 발행
-        logger.info(
-            f"{self.scope.exchange}: Sending ACK for {len(symbols)} symbols "
-            "from socket_parameters"
-        )
         for sym in symbols:
             # 정규화 ("KRW-BTC" → "BTC" 등)
             coin = _normalize_coin_symbol(sym)
-            
+
             # 중복 방지
             if coin not in self._cached_symbols:
                 self._cached_symbols.add(coin)
                 await self._emit_single_symbol_ack(coin)
-        
+
         self._ack_sent = True
-        logger.info(f"{self.scope.exchange}: ACK process completed")
