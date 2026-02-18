@@ -78,19 +78,6 @@ SchemaVersionStr = Annotated[
 ]
 
 
-class ConnectRequestDTO(BaseIOModelDTO):
-    """연결 요청 이벤트 스키마(IO 모델) - 최적화됨.
-
-    불변 객체로 안전하게 WebSocket 연결 요청을 표현합니다.
-    """
-
-    socket_mode: str = Field(..., description="소켓 모드")
-    symbols: str | list[str] = Field(..., description="심볼 목록")
-    orderbook_depth: int | None = Field(None, description="오더북 깊이", ge=1)
-    realtime_only: bool = Field(..., description="실시간 전용 여부")
-    correlation_id: str | None = Field(None, description="상관관계 ID")
-
-
 class ConnectionConfigDTO(BaseIOModelDTO):
     """연결 스키마(IO 모델)."""
 

@@ -188,6 +188,8 @@ class BaseRegionalWebsocketHandler(ScopedConnectionLoggingMixin, BaseWebsocketHa
                             batch=batch,
                             key=kafka_key,
                         )
+                    case "orderbook":
+                        return False
                     case _:
                         return False
 
@@ -298,6 +300,15 @@ class BaseRegionalWebsocketHandler(ScopedConnectionLoggingMixin, BaseWebsocketHa
     async def trade_message(self, message: Any) -> TradeResponseData | None:
         raise NotImplementedError
 
+    async def orderbook_message(self, message: Any) -> dict[str, Any] | None:
+        """오더북 메시지 처리 기본 구현.
+
+        현재는 연결 유지/ACK 처리 목적의 기본 등록만 수행하고,
+        별도 배치 발행은 하지 않는다.
+        """
+        _ = message
+        return None
+
     async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:
         while not self.stop_requested:
             start_time = time.time()
@@ -315,6 +326,7 @@ class BaseRegionalWebsocketHandler(ScopedConnectionLoggingMixin, BaseWebsocketHa
             handler_map: MessageHandler = {
                 "ticker": self.ticker_message,
                 "trade": self.trade_message,
+                "orderbook": self.orderbook_message,
             }
             fn = handler_map.get(self.scope.request_type)
             if fn:

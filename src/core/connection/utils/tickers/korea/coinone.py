@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.core.connection.utils.parsers.base import TickerParser
-from src.core.dto.io.realtime import StandardTickerDTO, StreamType
+from src.core.dto.io.realtime import StandardTickerDTO
 
 
 class CoinoneTickerParser(TickerParser):
@@ -74,9 +74,7 @@ class CoinoneTickerParser(TickerParser):
             change_rate = (close - prev_close) / prev_close
 
         # volume: target_volume 우선, 없으면 volume
-        volume = _safe_float(data.get("target_volume")) or _safe_float(
-            data.get("volume")
-        )
+        volume = _safe_float(data.get("target_volume")) or _safe_float(data.get("volume"))
         if volume is None:
             volume = 0.0
 

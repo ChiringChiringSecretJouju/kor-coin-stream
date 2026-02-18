@@ -11,7 +11,7 @@ DEFAULT_SCHEMA_VERSION: Final[str] = "1.0"
 
 # 지역/요청타입은 일단 자유 문자열을 허용합니다. 필요 시 Literal로 좁힐 수 있습니다.
 Region: TypeAlias = Literal["korea", "na", "asia"]
-RequestType: TypeAlias = Literal["ticker", "trade"]
+RequestType: TypeAlias = Literal["ticker", "trade", "orderbook"]
 ExchangeName: TypeAlias = Literal[
     "upbit",
     "bithumb",
@@ -39,7 +39,7 @@ class ConnectionStatus(Enum):
 
 class TradeSide(IntEnum):
     """체결 매수/매도 구분 Enum (IntEnum).
-    
+
     표준화된 체결 방향을 정수로 나타냅니다.
     1: 매수 (BUY)
     -1: 매도 (SELL)
@@ -48,7 +48,7 @@ class TradeSide(IntEnum):
 
     BUY = 1  # 매수 체결
     SELL = -1  # 매도 체결
-    UNKNOWN = 0 # 알 수 없음
+    UNKNOWN = 0  # 알 수 없음
 
 
 CONNECTION_STATUS_CONNECTED: Final[ConnectionStatus] = ConnectionStatus.CONNECTED
