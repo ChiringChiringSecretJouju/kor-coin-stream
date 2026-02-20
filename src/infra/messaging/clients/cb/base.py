@@ -48,14 +48,10 @@ class AsyncBaseClient:
         default_factory=lambda: asyncio.Queue(maxsize=1000), init=False
     )
     _poll_thread: threading.Thread | None = field(default=None, init=False)
-    _shutdown_event: threading.Event = field(
-        default_factory=lambda: threading.Event(), init=False
-    )
+    _shutdown_event: threading.Event = field(default_factory=lambda: threading.Event(), init=False)
     _producer_task: asyncio.Task[Any] | None = field(default=None, init=False)
     # 백프레셔 설정
-    _backpressure_config: BackpressureConfig = field(
-        default_factory=BackpressureConfig, init=False
-    )
+    _backpressure_config: BackpressureConfig = field(default_factory=BackpressureConfig, init=False)
     # 백프레셔 이벤트 전송 (선택적)
     _backpressure_event_producer: Any | None = field(default=None, init=False)
     _backpressure_throttled: bool = field(default=False, init=False)  # 중복 방지
@@ -163,8 +159,9 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
             await self._producer_task
 
         # 남은 메시지 flush (비동기)
-        if self.producer is not None:
-            await asyncio.to_thread(self.producer.flush, 30.0)
+        producer = self.producer
+        if producer is not None:
+            await asyncio.to_thread(producer.flush, 30.0)
 
         # poll 스레드 종료
         self._shutdown_event.set()
@@ -250,9 +247,7 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
                     exc_info=True,
                 )
 
-    async def _send_backpressure_event(
-        self, action: str, status: dict[str, Any]
-    ) -> None:
+    async def _send_backpressure_event(self, action: str, status: dict[str, Any]) -> None:
         """백프레셔 이벤트 전송 (내부 헬퍼)
 
         설정된 경우에만 Kafka로 이벤트를 전송합니다.
@@ -316,9 +311,7 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
                     },
                 )
                 # Kafka로 백프레셔 비활성화 이벤트 전송
-                await self._send_backpressure_event(
-                    "backpressure_deactivated", status_after
-                )
+                await self._send_backpressure_event("backpressure_deactivated", status_after)
 
         # 서브클래스별 직렬화 수행
         serialized_value, serialized_key = await self._serialize_message(value, key)
@@ -336,8 +329,9 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
                 if message is None:
                     break
 
-                if self.producer is not None:
-                    self.producer.produce(
+                producer = self.producer
+                if producer is not None:
+                    producer.produce(
                         topic=message["topic"],
                         value=message["value"],
                         key=message["key"],
@@ -347,22 +341,19 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
                 self._message_queue.task_done()
 
             except Exception as e:
-                logger.error(
-                    f"{self.__class__.__name__} worker error: {e}", exc_info=True
-                )
+                logger.error(f"{self.__class__.__name__} worker error: {e}", exc_info=True)
 
     def _poll_worker(self) -> None:
         """전용 poll 스레드 - delivery report 처리"""
         while not self._shutdown_event.is_set():
             try:
-                if self.producer:
-                    self.producer.poll(0.1)  # 100ms 타임아웃
+                producer = self.producer
+                if producer:
+                    producer.poll(0.1)  # 100ms 타임아웃
                 else:
                     threading.Event().wait(0.1)
             except Exception as e:
-                logger.error(
-                    f"{self.__class__.__name__} poll worker error: {e}", exc_info=True
-                )
+                logger.error(f"{self.__class__.__name__} poll worker error: {e}", exc_info=True)
 
     def _delivery_callback(self, err, msg) -> None:
         """Delivery report 콜백 - poll 스레드에서 호출됨"""
@@ -379,9 +370,7 @@ class AsyncProducerBase(AsyncBaseClient, ABC):
         pass
 
     @abstractmethod
-    async def _serialize_message(
-        self, value: Any, key: Any = None
-    ) -> tuple[bytes, bytes | None]:
+    async def _serialize_message(self, value: Any, key: Any = None) -> tuple[bytes, bytes | None]:
         """서브클래스별 메시지 직렬화"""
         pass
 
@@ -417,8 +406,11 @@ class AsyncConsumerBase(AsyncBaseClient, ABC):
         self._loop = asyncio.get_event_loop()
 
         # Consumer 인스턴스 생성
-        self.consumer = Consumer(self.config)
-        self.consumer.subscribe(self.topic)
+        consumer = Consumer(self.config)
+        if consumer is None:
+            raise RuntimeError("Failed to create Kafka consumer")
+        consumer.subscribe(self.topic)
+        self.consumer = consumer
 
         # 서브클래스별 초기화 수행
         await self._initialize_deserializers()
@@ -450,8 +442,9 @@ class AsyncConsumerBase(AsyncBaseClient, ABC):
             self._poll_thread.join(timeout=5.0)
 
         # Consumer 종료
-        if self.consumer is not None:
-            await asyncio.to_thread(self.consumer.close)
+        consumer = self.consumer
+        if consumer is not None:
+            await asyncio.to_thread(consumer.close)
         self.consumer = None
         self._started = False
 
@@ -473,15 +466,14 @@ class AsyncConsumerBase(AsyncBaseClient, ABC):
         """전용 poll 스레드 - 메시지 수신 및 큐에 전달"""
         while not self._shutdown_event.is_set():
             try:
-                if self.consumer:
-                    raw_msg = self.consumer.poll(timeout=0.1)  # 100ms 타임아웃
+                consumer = self.consumer
+                if consumer:
+                    raw_msg = consumer.poll(timeout=0.1)  # 100ms 타임아웃
                     if raw_msg is None:
                         continue
 
                     if raw_msg.error():
-                        logger.error(
-                            f"{self.__class__.__name__} Kafka error: {raw_msg.error()}"
-                        )
+                        logger.error(f"{self.__class__.__name__} Kafka error: {raw_msg.error()}")
                         continue
 
                     # 서브클래스별 raw 메시지 처리 (비차단 파이프라인 허용)
@@ -497,9 +489,7 @@ class AsyncConsumerBase(AsyncBaseClient, ABC):
                     threading.Event().wait(0.1)
 
             except Exception as e:
-                logger.error(
-                    f"{self.__class__.__name__} poll worker error: {e}", exc_info=True
-                )
+                logger.error(f"{self.__class__.__name__} poll worker error: {e}", exc_info=True)
 
     def _handle_raw_message(self, raw_msg) -> None:
         """기본 raw 메시지 처리: 동기 역직렬화 후 큐 삽입을 루프에 스케줄.
@@ -509,7 +499,12 @@ class AsyncConsumerBase(AsyncBaseClient, ABC):
         # 기본 구현은 기존 동기 경로 유지
         message = self._deserialize_message(raw_msg)
         if self._loop and not self._loop.is_closed():
-            self._loop.call_soon_threadsafe(lambda: self._add_message_to_queue(message))
+
+            def _enqueue_message() -> int:
+                self._add_message_to_queue(message)
+                return 0
+
+            self._loop.call_soon_threadsafe(lambda *_args: _enqueue_message())
 
     def _add_message_to_queue(self, msg: dict) -> None:
         """메시지를 큐에 안전하게 추가 (이벤트 루프에서 호출)"""

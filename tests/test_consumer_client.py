@@ -70,3 +70,28 @@ async def test_validator_returns_none_and_calls_dlq_on_invalid_payload(
     assert dto is None
     assert called["count"] == 1
     assert isinstance(called["reason"], str) and "검증 실패" in called["reason"]
+
+
+@pytest.mark.asyncio
+async def test_validator_rejects_unsupported_request_type_and_calls_dlq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    v = GenericValidator(exchange_name="korbit", region="korea", request_type="orderbook")
+
+    called: dict[str, Any] = build_counter_payload()
+
+    async def _spy_dlq(*, payload: dict, reason: str, key: str | None = None) -> None:
+        called["count"] += 1
+        called["reason"] = reason
+
+    monkeypatch.setattr(v, "_send_to_dlq", _spy_dlq, raising=True)
+
+    supported = await v.validate_supported_connect_request_type(
+        payload=VALID_PAYLOAD,
+        key="k|korbit|orderbook",
+    )
+
+    assert supported is False
+    assert called["count"] == 1
+    assert isinstance(called["reason"], str)
+    assert "지원하지 않는 request_type" in called["reason"]

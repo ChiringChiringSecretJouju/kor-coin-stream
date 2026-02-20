@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -114,3 +115,24 @@ async def test_enqueue_batch_message_noop_when_disabled() -> None:
     await handler._enqueue_batch_message("trade", build_socket_params_payload(symbols=["KRW-BTC"]))
 
     assert collector.items == []
+
+
+@pytest.mark.asyncio
+async def test_orderbook_message_emits_error_and_requests_disconnect() -> None:
+    handler = _DummyRegionalHandler(
+        **build_regional_handler_kwargs_payload(request_type="orderbook")
+    )
+    emit_ws_error = AsyncMock()
+    request_disconnect = AsyncMock()
+    handler._error_handler.emit_ws_error = emit_ws_error
+    handler.request_disconnect = request_disconnect
+
+    result = await handler.orderbook_message({"symbol": "KRW-BTC"})
+
+    assert result is None
+    emit_ws_error.assert_awaited_once()
+    await_args = emit_ws_error.await_args
+    assert await_args is not None
+    assert isinstance(await_args.args[0], NotImplementedError)
+    assert await_args.kwargs["observed_key"] == "orderbook_not_supported"
+    request_disconnect.assert_awaited_once_with(reason="orderbook_not_supported")

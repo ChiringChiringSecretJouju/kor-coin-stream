@@ -77,7 +77,7 @@ class BatchPerformanceMonitor:
             return
 
         # Consumer 생성
-        self.consumer = create_consumer(topics=[self.topic])
+        self.consumer = create_consumer(topic=[self.topic])
         await self.consumer.start()
 
         # Producer 생성
@@ -88,9 +88,7 @@ class BatchPerformanceMonitor:
         self._running = True
         self._monitor_task = asyncio.create_task(self._monitor_loop())
 
-        logger.info(
-            f"배치 모니터링 시작: {self.region}/{self.exchange}/{self.request_type}"
-        )
+        logger.info(f"배치 모니터링 시작: {self.region}/{self.exchange}/{self.request_type}")
 
     async def stop(self) -> None:
         """모니터링 중지"""
@@ -109,16 +107,17 @@ class BatchPerformanceMonitor:
         if self.producer:
             await self.producer.stop_producer()
 
-        logger.info(
-            f"배치 모니터링 중지: {self.region}/{self.exchange}/{self.request_type}"
-        )
+        logger.info(f"배치 모니터링 중지: {self.region}/{self.exchange}/{self.request_type}")
 
     async def _monitor_loop(self) -> None:
         """메시지 모니터링 루프 (실제 메시지 구조 기반)"""
         last_summary = asyncio.get_event_loop().time()
+        consumer = self.consumer
+        if consumer is None:
+            return
 
         try:
-            async for record in self.consumer:
+            async for record in consumer:
                 if not self._running:
                     break
 

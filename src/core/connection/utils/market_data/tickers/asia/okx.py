@@ -98,20 +98,18 @@ class OKXTickerParser(TickerParser):
         ts_str = ticker.get("ts", "0")
         timestamp = float(ts_str) / 1000.0 if ts_str else 0.0
 
-        return StandardTickerDTO(
-            code=code,
-            timestamp=timestamp,
-            open=open_price,
-            high=float(ticker["high24h"]),
-            low=float(ticker["low24h"]),
-            close=close,
-            volume=float(ticker.get("vol24h", "0")),
-            quote_volume=_safe_float(ticker.get("volCcy24h")),
-            prev_close=prev_close,
-            change_price=change_price,
-            change_rate=change_rate,
-            stream_type=None,
-        )
+        return StandardTickerDTO.from_raw(code=code,
+        timestamp=timestamp,
+        open=open_price,
+        high=float(ticker["high24h"]),
+        low=float(ticker["low24h"]),
+        close=close,
+        volume=float(ticker.get("vol24h", "0")),
+        quote_volume=_safe_float(ticker.get("volCcy24h")),
+        prev_close=prev_close,
+        change_price=change_price,
+        change_rate=change_rate,
+        stream_type=None,)
 
 
 def _safe_float(value: Any) -> float | None:

@@ -38,9 +38,7 @@ class PipelineLogger:
     _default_level = logging.INFO
 
     @classmethod
-    def get_logger(
-        cls, name: str, component: str | None = None, **kwargs
-    ) -> PipelineLogger:
+    def get_logger(cls, name: str, component: str | None = None, **kwargs) -> PipelineLogger:
         """
         로거 인스턴스를 반환하는 간단한 팩토리 메서드.
         표준 logging.getLogger가 이름 단위로 사실상 싱글톤이므로
@@ -92,9 +90,7 @@ class PipelineLogger:
         """
         로거, 핸들러, 포맷터 설정
         """
-        self.logger_name = (
-            f"{self.name}.{self.component}" if self.component else self.name
-        )
+        self.logger_name = f"{self.name}.{self.component}" if self.component else self.name
         self.logger = logging.getLogger(self.logger_name)
         self.logger.setLevel(self.level)
 
@@ -132,9 +128,7 @@ class PipelineLogger:
         self.queue_handler = QueueHandler(self.log_queue)
         self.logger.addHandler(self.queue_handler)
 
-        self.listener = QueueListener(
-            self.log_queue, *handlers, respect_handler_level=True
-        )
+        self.listener = QueueListener(self.log_queue, *handlers, respect_handler_level=True)
         self.listener.start()
 
     def _get_log_filename(self) -> str:
@@ -158,9 +152,7 @@ class PipelineLogger:
         """
         self.context.clear()
 
-    def _process_message(
-        self, level: int, msg: str, extra: dict[str, Any] | None = None
-    ) -> None:
+    def _process_message(self, level: int, msg: str, extra: dict[str, Any] | None = None) -> None:
         """
         메시지 처리 및 로깅
         """
@@ -168,23 +160,23 @@ class PipelineLogger:
 
         # exc_info, stack_info는 logger.log()의 파라미터로 추출
         exc_info_param = None
-        stack_info_param = None
-        
+        stack_info_param = False
+
         if extra:
             # logging 파라미터 추출 (exc_info, stack_info)
             exc_info_param = extra.pop("exc_info", None)
-            stack_info_param = extra.pop("stack_info", None)
-            
+            stack_info_param = bool(extra.pop("stack_info", False))
+
             # 'extra' 키가 있으면 그 내용을 풀어서 병합
             if "extra" in extra:
                 nested_extra = extra.pop("extra")
                 if isinstance(nested_extra, dict):
                     log_extra.update(nested_extra)
-            
+
             # 나머지 컨텍스트 병합
             if self.context:
                 log_extra.update(self.context)
-            
+
             # 남은 extra 병합
             log_extra.update(extra)
         elif self.context:
@@ -192,11 +184,7 @@ class PipelineLogger:
 
         # exc_info, stack_info를 파라미터로 전달
         self.logger.log(
-            level, 
-            msg, 
-            exc_info=exc_info_param, 
-            stack_info=stack_info_param,
-            extra=log_extra
+            level, msg, exc_info=exc_info_param, stack_info=stack_info_param, extra=log_extra
         )
 
     async def alog(self, level: int, msg: str, **kwargs) -> None:

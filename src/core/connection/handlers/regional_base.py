@@ -301,12 +301,20 @@ class BaseRegionalWebsocketHandler(ScopedConnectionLoggingMixin, BaseWebsocketHa
         raise NotImplementedError
 
     async def orderbook_message(self, message: Any) -> dict[str, Any] | None:
-        """오더북 메시지 처리 기본 구현.
-
-        현재는 연결 유지/ACK 처리 목적의 기본 등록만 수행하고,
-        별도 배치 발행은 하지 않는다.
-        """
         _ = message
+        error = NotImplementedError(
+            "orderbook request_type is not supported by regional realtime pipeline"
+        )
+        await self._error_handler.emit_ws_error(
+            error,
+            observed_key="orderbook_not_supported",
+            raw_context={
+                "request_type": self.scope.request_type,
+                "exchange": self.scope.exchange,
+                "region": self.scope.region,
+            },
+        )
+        await self.request_disconnect(reason="orderbook_not_supported")
         return None
 
     async def _handle_message_loop(self, websocket: Any, timeout: int) -> None:

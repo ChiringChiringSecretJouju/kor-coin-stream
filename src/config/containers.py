@@ -51,6 +51,7 @@ from src.config.settings import (
     redis_settings,
     websocket_settings,
 )
+from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.connection.services.krw_enrichment import KrwEnrichmentService
 from src.core.connection.utils.market_data.tickers.asia.dispatcher import (
     AsiaTickerDispatcher,
@@ -83,7 +84,7 @@ from src.infra.messaging.connect.disconnection_consumer import (
 
 # Handler 클래스 매핑 (거래소 이름 → 클래스)
 # 이것만 코드에 정의 (클래스는 import 필요하므로)
-HANDLER_CLASS_MAP = {
+HANDLER_CLASS_MAP: dict[str, type[BaseWebsocketHandler]] = {
     # 한국
     "upbit": UpbitWebsocketHandler,
     "bithumb": BithumbWebsocketHandler,

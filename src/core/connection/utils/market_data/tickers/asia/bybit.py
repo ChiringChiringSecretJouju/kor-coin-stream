@@ -91,20 +91,18 @@ class BybitTickerParser(TickerParser):
             raw_pct = _safe_float(data.get("price24hPcnt"))
             change_rate = raw_pct if raw_pct is not None else change_price / prev_close
 
-        return StandardTickerDTO(
-            code=code,
-            timestamp=float(message.get("ts", 0)) / 1000.0,
-            open=float(data.get("prevPrice24h", "0")),
-            high=float(data["highPrice24h"]),
-            low=float(data["lowPrice24h"]),
-            close=close,
-            volume=float(data.get("volume24h", "0")),
-            quote_volume=_safe_float(data.get("turnover24h")),
-            prev_close=prev_close,
-            change_price=change_price,
-            change_rate=change_rate,
-            stream_type=None,
-        )
+        return StandardTickerDTO.from_raw(code=code,
+        timestamp=float(message.get("ts", 0)) / 1000.0,
+        open=float(data.get("prevPrice24h", "0")),
+        high=float(data["highPrice24h"]),
+        low=float(data["lowPrice24h"]),
+        close=close,
+        volume=float(data.get("volume24h", "0")),
+        quote_volume=_safe_float(data.get("turnover24h")),
+        prev_close=prev_close,
+        change_price=change_price,
+        change_rate=change_rate,
+        stream_type=None,)
 
 
 def _format_code(symbol: str) -> str:

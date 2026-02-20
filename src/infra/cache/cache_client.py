@@ -43,4 +43,7 @@ class RedisConnectionManager:
 
     @property
     def client(self) -> Redis:
-        return self._redis
+        client = self._redis
+        if client is None:
+            raise RuntimeError("Redis client is not initialized. Call initialize() first.")
+        return client

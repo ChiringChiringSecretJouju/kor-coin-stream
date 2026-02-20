@@ -78,7 +78,7 @@ class CoinoneTickerParser(TickerParser):
         if volume is None:
             volume = 0.0
 
-        return StandardTickerDTO(
+        return StandardTickerDTO.from_raw(
             code=code,
             timestamp=float(data["timestamp"]) / 1000.0,
             open=float(data["first"]),
@@ -90,7 +90,7 @@ class CoinoneTickerParser(TickerParser):
             prev_close=prev_close,
             change_price=change_price,
             change_rate=change_rate,
-            stream_type=None,  # Coinone은 stream_type 미제공
+            stream_type=None,
         )
 
 

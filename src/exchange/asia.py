@@ -2,7 +2,7 @@ from typing import Any, override
 
 from src.core.connection.handlers.global_handler import BaseGlobalWebsocketHandler
 from src.core.connection.services.krw_enrichment import KrwEnrichmentService
-from src.core.types import TickerResponseData, TradeResponseData
+from src.core.types import SocketParams, TickerResponseData, TradeResponseData
 
 
 class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
@@ -21,7 +21,7 @@ class BinanceWebsocketHandler(BaseGlobalWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
@@ -99,7 +99,7 @@ class BybitWebsocketHandler(BaseGlobalWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
@@ -181,7 +181,7 @@ class OKXWebsocketHandler(BaseGlobalWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()

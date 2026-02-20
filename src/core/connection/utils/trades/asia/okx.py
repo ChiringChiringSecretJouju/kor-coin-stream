@@ -66,12 +66,10 @@ class OKXTradeParser(TradeParser):
         ts_str = trade.get("ts", "0")
         timestamp = float(ts_str) if ts_str.isdigit() else 0.0
 
-        return StandardTradeDTO(
-            code=code,
-            trade_timestamp=timestamp / 1000.0,
-            trade_price=price,
-            trade_volume=volume,
-            ask_bid=side,
-            sequential_id=str(trade.get("tradeId", "")),
-            trade_amount=price * volume,
-        )
+        return StandardTradeDTO.from_raw(code=code,
+        trade_timestamp=timestamp / 1000.0,
+        trade_price=price,
+        trade_volume=volume,
+        ask_bid=side,
+        sequential_id=str(trade.get("tradeId", "")),
+        trade_amount=price * volume,)

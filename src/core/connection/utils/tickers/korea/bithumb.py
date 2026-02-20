@@ -65,20 +65,18 @@ class BithumbTickerParser(TickerParser):
             raw_st if raw_st in ("SNAPSHOT", "REALTIME") else None
         )
 
-        return StandardTickerDTO(
-            code=message["code"],
-            timestamp=float(message["timestamp"]) / 1000.0,
-            open=float(message["opening_price"]),
-            high=float(message["high_price"]),
-            low=float(message["low_price"]),
-            close=close,
-            volume=float(message["acc_trade_volume"]),
-            quote_volume=_safe_float(message.get("acc_trade_price")),
-            prev_close=prev_close,
-            change_price=change_price,
-            change_rate=change_rate,
-            stream_type=stream_type,
-        )
+        return StandardTickerDTO.from_raw(code=message["code"],
+        timestamp=float(message["timestamp"]) / 1000.0,
+        open=float(message["opening_price"]),
+        high=float(message["high_price"]),
+        low=float(message["low_price"]),
+        close=close,
+        volume=float(message["acc_trade_volume"]),
+        quote_volume=_safe_float(message.get("acc_trade_price")),
+        prev_close=prev_close,
+        change_price=change_price,
+        change_rate=change_rate,
+        stream_type=stream_type,)
 
 
 def _safe_float(value: Any) -> float | None:

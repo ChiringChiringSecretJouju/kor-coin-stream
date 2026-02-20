@@ -12,29 +12,11 @@ import contextlib
 from typing import TypeAlias
 
 from src.common.logger import PipelineLogger
+from src.core.connection.handlers.base import BaseWebsocketHandler
 from src.core.dto.internal.common import ConnectionScopeDomain
-from src.exchange.asia import (
-    BinanceWebsocketHandler,
-    BybitWebsocketHandler,
-    OKXWebsocketHandler,
-)
-from src.exchange.korea import (
-    BithumbWebsocketHandler,
-    CoinoneWebsocketHandler,
-    KorbitWebsocketHandler,
-    UpbitWebsocketHandler,
-)
 
 # 거래소 핸들러 타입 (임시 - 실제로는 orchestrator.py에서 import)
-ExchangeSocketHandler: TypeAlias = (
-    UpbitWebsocketHandler
-    | BithumbWebsocketHandler
-    | CoinoneWebsocketHandler
-    | KorbitWebsocketHandler
-    | BinanceWebsocketHandler
-    | BybitWebsocketHandler
-    | OKXWebsocketHandler
-)
+ExchangeSocketHandler: TypeAlias = BaseWebsocketHandler
 ConnectionKey: TypeAlias = tuple[str, str, str, str | None]
 logger = PipelineLogger.get_logger("connection_registry", "app")
 

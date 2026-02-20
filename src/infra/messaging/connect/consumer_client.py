@@ -62,9 +62,7 @@ class KafkaConsumerClient:
                 logger.debug(f"무시: type!={PayloadType.STATUS}, 받음: {payload.get('type')}")
                 return False
 
-    async def _enqueue_connect_task(
-        self, validated: StreamContextDomain, record: dict
-    ) -> None:
+    async def _enqueue_connect_task(self, validated: StreamContextDomain, record: dict) -> None:
         """오케스트레이터 연결 작업을 백그라운드 태스크로 등록."""
 
         async def _task_with_offset_store() -> None:
@@ -72,12 +70,10 @@ class KafkaConsumerClient:
                 await self.orchestrator.connect_from_context(validated)
 
                 # ✅ 성공 시 오프셋 저장 (메모리에만, 초고속)
-                if (
-                    (raw_msg := record.get("_raw_msg"))
-                    and self.consumer is not None
-                    and self.consumer.consumer is not None
-                ):
-                    self.consumer.consumer.store_offsets(message=raw_msg)
+                if (raw_msg := record.get("_raw_msg")) and self.consumer is not None:
+                    consumer = self.consumer.consumer
+                    if consumer is not None:
+                        consumer.store_offsets(message=raw_msg)
 
             except Exception as e:
                 logger.error(f"처리 실패, 재시도 예정: {e}", exc_info=True)
@@ -126,9 +122,15 @@ class KafkaConsumerClient:
                 if validated_dto is None:
                     continue
 
-                skip: bool = await self._cache_coord.handle_and_maybe_skip(
-                    validated_dto
+                supported = await _validated.validate_supported_connect_request_type(
+                    payload=payload,
+                    key=message_key,
+                    request_type=validated_dto.target.request_type,
                 )
+                if not supported:
+                    continue
+
+                skip: bool = await self._cache_coord.handle_and_maybe_skip(validated_dto)
 
                 if skip:
                     continue

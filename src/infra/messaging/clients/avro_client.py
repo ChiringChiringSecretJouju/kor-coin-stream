@@ -27,6 +27,11 @@ from src.infra.messaging.clients.cb.config import (
 )
 
 
+def _default_max_concurrency() -> int:
+    cpu_count = os.cpu_count() or 4
+    return min(cpu_count * 4, 64)
+
+
 @dataclass(slots=True)
 class AvroProducerWrapper(AsyncProducerBase):
     """
@@ -54,9 +59,7 @@ class AvroProducerWrapper(AsyncProducerBase):
             self._key_serializer = create_avro_serializer(self.key_subject)
             await self._key_serializer.ensure_serializer()
 
-    async def _serialize_message(
-        self, value: Any, key: Any = None
-    ) -> tuple[bytes, bytes | None]:
+    async def _serialize_message(self, value: Any, key: Any = None) -> tuple[bytes, bytes | None]:
         """Avro 메시지 직렬화 (CPU 오프로드)"""
         if not self._value_serializer:
             raise RuntimeError("Avro value serializer not initialized")
@@ -92,9 +95,7 @@ class AvroConsumerWrapper(AsyncConsumerBase):
     _value_deserializer: AsyncAvroDeserializer | None = field(default=None, init=False)
     _key_deserializer: AsyncAvroDeserializer | None = field(default=None, init=False)
     # 동시 역직렬화 제한(백프레셔) - CPU 코어 기반 동적 설정
-    _max_concurrency: int = field(
-        default_factory=lambda: min(os.cpu_count() * 4 if os.cpu_count() else 16, 64)
-    )
+    _max_concurrency: int = field(default_factory=_default_max_concurrency)
     _sem: asyncio.Semaphore | None = field(default=None, init=False, repr=False)
     # 입력 경계 검증(선택): Pydantic v2 TypeAdapter
     value_model: type[BaseModel] | None = None
@@ -120,9 +121,7 @@ class AvroConsumerWrapper(AsyncConsumerBase):
 
     def _deserialize_message(self, raw_msg) -> dict[str, Any]:
         """동기 경로(호환용): 사용하지 않음. 비차단 파이프라인은 _handle_raw_message 사용."""
-        raise NotImplementedError(
-            "Use non-blocking _handle_raw_message pipeline instead"
-        )
+        raise NotImplementedError("Use non-blocking _handle_raw_message pipeline instead")
 
     def _handle_raw_message(self, raw_msg) -> None:
         """폴 스레드에서 호출됨: 비동기 역직렬화 작업을 이벤트 루프에 스케줄."""
@@ -139,13 +138,9 @@ class AvroConsumerWrapper(AsyncConsumerBase):
             try:
                 if self._sem is not None:
                     async with self._sem:
-                        await self._deserialize_and_enqueue(
-                            value_bytes, key_bytes, topic, raw_msg
-                        )
+                        await self._deserialize_and_enqueue(value_bytes, key_bytes, topic, raw_msg)
                 else:
-                    await self._deserialize_and_enqueue(
-                        value_bytes, key_bytes, topic, raw_msg
-                    )
+                    await self._deserialize_and_enqueue(value_bytes, key_bytes, topic, raw_msg)
             except Exception as e:
                 # ✅ 에러 이벤트 발행 (순환 import 없음!)
                 await EventBus.emit(
@@ -165,11 +160,12 @@ class AvroConsumerWrapper(AsyncConsumerBase):
                 )
 
         # 이벤트 루프에 안전하게 태스크 스케줄 및 트래킹 등록
-        def _schedule() -> None:
+        def _schedule() -> object:
             t = asyncio.create_task(_task())
             self._register_task(t)
+            return None
 
-        self._loop.call_soon_threadsafe(_schedule)
+        self._loop.call_soon_threadsafe(lambda *_args: _schedule())
 
     async def _deserialize_and_enqueue(
         self, value_bytes: bytes, key_bytes: bytes | None, topic: str, raw_msg: Any
@@ -177,9 +173,7 @@ class AvroConsumerWrapper(AsyncConsumerBase):
         """이벤트 루프 내에서 실행: 역직렬화 → (선택)키 처리 → 큐 삽입"""
         assert self._value_deserializer is not None
 
-        deserialized_value = await self._value_deserializer.deserialize_async(
-            value_bytes
-        )
+        deserialized_value = await self._value_deserializer.deserialize_async(value_bytes)
 
         # 입력 경계 검증/정규화(선택, 팀 룰: 1회 검증)
         if self._value_adapter is not None:
@@ -196,17 +190,13 @@ class AvroConsumerWrapper(AsyncConsumerBase):
                 deserialized_value = model.model_dump()  # type: ignore[assignment]
             except Exception:
                 # 모델이 이미 dict 타입을 반환하는 경우 대비
-                deserialized_value = (
-                    dict(model) if not isinstance(model, dict) else model
-                )
+                deserialized_value = dict(model) if not isinstance(model, dict) else model
             # Consumer 경로에서는 재-직렬화하지 않음
 
         deserialized_key: Any | None = None
         if key_bytes is not None:
             if self._key_deserializer:
-                deserialized_key = await self._key_deserializer.deserialize_async(
-                    key_bytes
-                )
+                deserialized_key = await self._key_deserializer.deserialize_async(key_bytes)
             else:
                 try:
                     deserialized_key = key_bytes.decode("utf-8")
@@ -255,11 +245,12 @@ class AvroConsumerWrapper(AsyncConsumerBase):
                     t.cancel()
             elif self._loop is not None:
 
-                def _cancel_all() -> None:
+                def _cancel_all() -> object:
                     for t in list(self._tasks):
                         t.cancel()
+                    return None
 
-                self._loop.call_soon_threadsafe(_cancel_all)
+                self._loop.call_soon_threadsafe(lambda *_args: _cancel_all())
 
             # 3) 태스크 드레인(가능한 경우에 한해)
             if self._loop is not None and self._loop is current_loop:

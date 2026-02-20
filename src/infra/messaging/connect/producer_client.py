@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -48,7 +49,7 @@ class AvroProducer:
         self._avro_subject: str | None = None
 
     # 실행할 비동기 함수, 예: self.producer.start 또는 self.producer.stop
-    async def _execute_with_logging(self, action: Callable) -> bool:
+    async def _execute_with_logging(self, action: Callable[[], Awaitable[None]]) -> bool:
         """지정된 action을 실행하며 로깅을 처리하는 헬퍼 비동기 메서드"""
         await action()
         return True
@@ -189,9 +190,15 @@ class AvroProducer:
 
             return False  # while 루프 정상 종료 시 (도달 불가)
 
+        except Exception as e:
+            logger.error(f"Producer send routine failed: {e}", exc_info=True)
+            return False
+
         finally:
             if stop_after_send:
                 await self.stop_producer()
+
+        return False
 
 
 __all__ = [

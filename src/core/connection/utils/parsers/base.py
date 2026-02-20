@@ -9,7 +9,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any
 
-from src.core.connection._utils import extract_base_currency
+from src.core.connection.utils.symbols.symbol_utils import extract_base_currency
 from src.core.dto.io.realtime import StandardTickerDTO, StandardTradeDTO
 
 
@@ -73,9 +73,6 @@ def parse_symbol(symbol_value: str) -> tuple[str, str | None]:
         return target, quote if quote else None
 
     return target, None
-
-
-
 
 
 class TradeParser(ABC):

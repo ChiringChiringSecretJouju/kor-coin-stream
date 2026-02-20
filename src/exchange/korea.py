@@ -3,6 +3,7 @@ from typing import Any, override
 from src.common.logger import PipelineLogger
 from src.core.connection.handlers.korea_handler import BaseKoreaWebsocketHandler
 from src.core.types import (
+    SocketParams,
     TickerResponseData,
     TradeResponseData,
 )
@@ -23,7 +24,7 @@ class UpbitWebsocketHandler(BaseKoreaWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
@@ -76,7 +77,7 @@ class BithumbWebsocketHandler(BaseKoreaWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
@@ -129,7 +130,7 @@ class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()
@@ -157,9 +158,7 @@ class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
         if rt and rt != "DATA":
             if rt == "SUBSCRIBED":
                 self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Ticker subscription confirmed (SUBSCRIBED)"
-                )
+                logger.info(f"{self.scope.exchange}: Ticker subscription confirmed (SUBSCRIBED)")
                 await self._emit_connect_success_ack()
             return None
 
@@ -183,9 +182,7 @@ class CoinoneWebsocketHandler(BaseKoreaWebsocketHandler):
         if rt and rt != "DATA":
             if rt == "SUBSCRIBED":
                 self._log_status("subscribed")
-                logger.info(
-                    f"{self.scope.exchange}: Trade subscription confirmed (SUBSCRIBED)"
-                )
+                logger.info(f"{self.scope.exchange}: Trade subscription confirmed (SUBSCRIBED)")
                 await self._emit_connect_success_ack()
             return None
 
@@ -208,7 +205,7 @@ class KorbitWebsocketHandler(BaseKoreaWebsocketHandler):
 
     @override
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓 연결 시 배치 시스템 초기화"""
         await self._initialize_batch_system()

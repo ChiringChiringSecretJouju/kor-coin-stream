@@ -26,6 +26,7 @@ from src.infra.messaging.connect.producers.error.dlq import DlqProducer
 
 logger: Final = PipelineLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
+_SUPPORTED_CONNECT_REQUEST_TYPES: Final[frozenset[str]] = frozenset({"ticker", "trade"})
 
 
 def _make_json_serializable(obj: Any) -> Any:
@@ -88,6 +89,23 @@ class GenericValidator:
                 key=key,
             )
             return None
+
+    async def validate_supported_connect_request_type(
+        self,
+        payload: dict,
+        key: str | None = None,
+        request_type: str | None = None,
+    ) -> bool:
+        candidate = str(request_type or self.request_type).strip().lower()
+        if candidate in _SUPPORTED_CONNECT_REQUEST_TYPES:
+            return True
+
+        await self._send_to_dlq(
+            payload=payload,
+            reason=(f"지원하지 않는 request_type: {candidate} (지원값: ticker, trade)"),
+            key=key,
+        )
+        return False
 
     async def _send_to_dlq(
         self,

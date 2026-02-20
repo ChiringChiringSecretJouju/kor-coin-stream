@@ -8,6 +8,7 @@ Schema Registry와 연동하여 스키마 진화를 지원합니다.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,7 +29,7 @@ from src.infra.messaging.avro.utils.serde_utiles import create_value_context
 logger = PipelineLogger.get_logger("avro_serializers", "avro")
 
 
-async def get_registry_client() -> AsyncSchemaRegistryClient:
+def get_registry_client() -> AsyncSchemaRegistryClient:
     """프로세스 단위 단일 AsyncSchemaRegistryClient 인스턴스 생성/재사용."""
     return AsyncSchemaRegistryClient(
         {
@@ -46,6 +47,16 @@ def _fixed_subject_name_strategy(subject: str):
         return subject
 
     return _strategy
+
+
+def _serialize_dict(obj: object, _ctx: object) -> dict[str, Any]:
+    if isinstance(obj, dict):
+        return obj
+    raise TypeError(f"Expected dict payload for Avro serialization, got {type(obj)!r}")
+
+
+def _deserialize_dict(obj: dict[str, Any], _ctx: object) -> object:
+    return obj
 
 
 @dataclass(slots=True)
@@ -75,7 +86,7 @@ class AsyncBaseAvroHandler:
                 return self._confluent_client
 
             # 단일 Schema Registry 클라이언트 재사용
-            self._confluent_client = await get_registry_client()
+            self._confluent_client = get_registry_client()
             self._initialized = True
 
             logger.debug(f"Schema Registry 연결 완료: subject={self.subject}")
@@ -107,9 +118,9 @@ class AsyncAvroSerializer(AsyncBaseAvroHandler):
         # use.latest.version=True → 최신 스키마 사용
         # subject.name.strategy: 토픽 이름을 그대로 Subject로 사용 (suffix 없음)
 
-        self._confluent_serializer = await ConfluentAsyncAvroSerializer(
+        self._confluent_serializer = ConfluentAsyncAvroSerializer(
             schema_registry_client=confluent_client,
-            to_dict=lambda obj, ctx: obj,  # dict 그대로 반환
+            to_dict=_serialize_dict,
             conf={
                 "use.latest.version": True,  # 최신 스키마 자동 조회
                 "auto.register.schemas": False,  # 등록된 스키마만 사용
@@ -134,7 +145,10 @@ class AsyncAvroSerializer(AsyncBaseAvroHandler):
         """
         serializer = await self.ensure_serializer()
         context = create_value_context(topic=self.subject)
-        return await serializer(obj, context.to_confluent_context())
+        encoded = serializer(obj, context.to_confluent_context())
+        if encoded is None:
+            raise ValueError("Avro serialization returned None")
+        return encoded
 
 
 @dataclass(slots=True)
@@ -156,9 +170,9 @@ class AsyncAvroDeserializer(AsyncBaseAvroHandler):
         confluent_client = await self.ensure_connection()
 
         # 역직렬화기 생성 (await 필수 - 비동기 생성자)
-        self._confluent_deserializer = await ConfluentAsyncAvroDeserializer(
+        self._confluent_deserializer = ConfluentAsyncAvroDeserializer(
             schema_registry_client=confluent_client,
-            from_dict=lambda obj, ctx: obj,  # dict 그대로 반환
+            from_dict=_deserialize_dict,
         )
 
         return self._confluent_deserializer
@@ -176,7 +190,14 @@ class AsyncAvroDeserializer(AsyncBaseAvroHandler):
         """
         deserializer = await self.ensure_deserializer()
         context = create_value_context(topic=self.subject)
-        return await deserializer(data, context.to_confluent_context())
+        decoded = deserializer(data, context.to_confluent_context())
+        if decoded is None:
+            raise ValueError("Avro deserialization returned None")
+        if isinstance(decoded, dict):
+            return decoded
+        if isinstance(decoded, Mapping):
+            return dict(decoded)
+        raise TypeError(f"Expected dict payload from Avro deserializer, got {type(decoded)!r}")
 
 
 def create_avro_serializer(subject: str) -> AsyncAvroSerializer:

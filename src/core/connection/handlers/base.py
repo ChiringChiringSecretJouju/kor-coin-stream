@@ -33,6 +33,7 @@ from src.core.types import (
     ExchangeName,
     Region,
     RequestType,
+    SocketParams,
 )
 from src.infra.messaging.connect.producers.backpressure.backpressure_event import (
     BackpressureEventProducer,
@@ -104,6 +105,7 @@ class BaseWebsocketHandler(ABC):
         self._backoff_task: asyncio.Task[None] | None = None
         self._last_backoff: float = 0.0  # Decorrelated Jitter용 이전 상태
         self._current_correlation_id: str | None = None
+        self.projection: list[str] | None = None
 
         # 3개의 독립 emit_factory (Layer별 독립 전송)
         async def _reception_emit_factory(
@@ -278,11 +280,14 @@ class BaseWebsocketHandler(ABC):
 
         await self._health_monitor.stop_monitoring()
 
+    async def disconnect(self) -> None:
+        await self.request_disconnect(reason="manual_disconnect")
+
     async def websocket_connection(
-        self, url: str, parameter_info: dict, correlation_id: str | None = None
+        self, url: str, parameter_info: SocketParams, correlation_id: str | None = None
     ) -> None:
         """웹소켓에 연결하고 구독/수신 루프를 실행합니다. 끊김 시 재접속을 수행합니다."""
-        socket_parameters: dict | list = parameter_info
+        socket_parameters: SocketParams = parameter_info
         timeout: int = DEFAULT_MESSAGE_TIMEOUT
         self._current_correlation_id = correlation_id
 
@@ -310,10 +315,18 @@ class BaseWebsocketHandler(ABC):
                     # Producer 시작 및 백프레셔 모니터링 연결
                     await self._backpressure_producer.start_producer()
                     await self._metrics_producer.start_producer()
-                    # MetricsProducer에 백프레셔 모니터링 연결 (30초마다 큐 상태 리포트)
-                    self._metrics_producer.producer.set_backpressure_event_producer(
-                        self._backpressure_producer, enable_periodic_monitoring=True
-                    )
+                    metrics_client = self._metrics_producer.producer
+                    if metrics_client is not None:
+                        backpressure_setter = getattr(
+                            metrics_client,
+                            "set_backpressure_event_producer",
+                            None,
+                        )
+                        if callable(backpressure_setter):
+                            backpressure_setter(
+                                self._backpressure_producer,
+                                enable_periodic_monitoring=True,
+                            )
 
                     # 현재 연결 보관 및 파라미터 상태 저장
                     self._current_websocket = websocket

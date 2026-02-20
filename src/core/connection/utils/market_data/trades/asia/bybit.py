@@ -74,15 +74,13 @@ class BybitTradeParser(TradeParser):
         price = float(trade.get("p", "0"))
         volume = float(trade.get("v", "0"))
 
-        return StandardTradeDTO(
-            code=code,
-            trade_timestamp=float(trade.get("T", 0)) / 1000.0,
-            trade_price=price,
-            trade_volume=volume,
-            ask_bid=side,
-            sequential_id=str(trade.get("seq", trade.get("i", "0"))),
-            trade_amount=price * volume,
-        )
+        return StandardTradeDTO.from_raw(code=code,
+        trade_timestamp=float(trade.get("T", 0)) / 1000.0,
+        trade_price=price,
+        trade_volume=volume,
+        ask_bid=side,
+        sequential_id=str(trade.get("seq", trade.get("i", "0"))),
+        trade_amount=price * volume,)
 
     def _format_code(self, symbol: str) -> str:
         """심볼을 KRW-BTC 형식으로 변환."""

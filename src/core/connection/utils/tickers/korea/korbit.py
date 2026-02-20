@@ -84,20 +84,18 @@ class KorbitTickerParser(TickerParser):
         elif snapshot is False:
             stream_type = "REALTIME"
 
-        return StandardTickerDTO(
-            code=code,
-            timestamp=float(message["timestamp"]) / 1000.0,
-            open=float(data["open"]),
-            high=float(data["high"]),
-            low=float(data["low"]),
-            close=close,
-            volume=float(data["volume"]),
-            quote_volume=_safe_float(data.get("quoteVolume")),
-            prev_close=prev_close,
-            change_price=change_price,
-            change_rate=change_rate,
-            stream_type=stream_type,
-        )
+        return StandardTickerDTO.from_raw(code=code,
+        timestamp=float(message["timestamp"]) / 1000.0,
+        open=float(data["open"]),
+        high=float(data["high"]),
+        low=float(data["low"]),
+        close=close,
+        volume=float(data["volume"]),
+        quote_volume=_safe_float(data.get("quoteVolume")),
+        prev_close=prev_close,
+        change_price=change_price,
+        change_rate=change_rate,
+        stream_type=stream_type,)
 
     @staticmethod
     def _convert_symbol_to_code(symbol: str) -> str:

@@ -73,20 +73,18 @@ class BinanceTickerParser(TickerParser):
         change_rate_raw = _safe_float(message.get("P"))
         change_rate = change_rate_raw / 100.0 if change_rate_raw is not None else None
 
-        return StandardTickerDTO(
-            code=code,
-            timestamp=float(message.get("E", 0)) / 1000.0,
-            open=float(message["o"]),
-            high=float(message["h"]),
-            low=float(message["l"]),
-            close=close,
-            volume=float(message["v"]),
-            quote_volume=_safe_float(message.get("q")),
-            prev_close=prev_close,
-            change_price=change_price,
-            change_rate=change_rate,
-            stream_type=None,
-        )
+        return StandardTickerDTO.from_raw(code=code,
+        timestamp=float(message.get("E", 0)) / 1000.0,
+        open=float(message["o"]),
+        high=float(message["h"]),
+        low=float(message["l"]),
+        close=close,
+        volume=float(message["v"]),
+        quote_volume=_safe_float(message.get("q")),
+        prev_close=prev_close,
+        change_price=change_price,
+        change_rate=change_rate,
+        stream_type=None,)
 
 
 def _format_code(symbol: str) -> str:

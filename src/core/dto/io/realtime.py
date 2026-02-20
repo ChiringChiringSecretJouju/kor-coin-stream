@@ -155,6 +155,10 @@ class StandardTradeDTO(BaseModel):
         examples=[1730336862.047],
     )
 
+    @classmethod
+    def from_raw(cls, **data: Any) -> "StandardTradeDTO":
+        return cls.model_validate(data)
+
     model_config = OPTIMIZED_CONFIG
 
 
@@ -313,6 +317,10 @@ class StandardTickerDTO(BaseModel):
         gt=0.0,
         examples=[1730336862.047],
     )
+
+    @classmethod
+    def from_raw(cls, **data: Any) -> "StandardTickerDTO":
+        return cls.model_validate(data)
 
     model_config = OPTIMIZED_CONFIG
 

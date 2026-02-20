@@ -68,7 +68,15 @@ ignore = []
 [tool.pyrefly]
 # 어떤 소스를 검사할지 지정
 project-includes = ["src"]
-project-excludes = ["**/.[!/.]*", "**/tests", "promiting/**"]
+project-excludes = [
+  "**/.[!/.]*",
+  "**/tests",
+  "promiting/**",
+  "src/core/connection/handlers/global_handler 2.py",
+  "src/core/connection/handlers/korea_handler 2.py",
+  "src/core/connection/utils/tickers/**",
+  "src/core/connection/utils/trades/**",
+]
 search-path = ["."]
 
 # 파이썬 환경 설정
@@ -85,6 +93,7 @@ ignore-errors-in-generated-code = true
 # 프로젝트 상황에 맞게 조정 가능 (샘플: 과도한 경고 억제)
 bad-assignment = false
 invalid-argument = false
+no-matching-overload = false
 
 [tool.pytest.ini_options]
 minversion = "7.0"

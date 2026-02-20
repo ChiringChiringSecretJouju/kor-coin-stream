@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Awaitable
+from typing import Any, cast
 
 from redis.asyncio import Redis
 
@@ -56,7 +58,10 @@ class _MetaRepository:
         Returns:
             dict[str, str | int] | None: 필수 필드가 유효하면 정규화된 메타, 없거나 부정합이면 None
         """
-        raw = await self.redis.hgetall(self.keys.meta())
+        raw = await cast(
+            Awaitable[dict[str | bytes, str | bytes]],
+            self.redis.hgetall(self.keys.meta()),
+        )
         if not raw:
             return None
 
@@ -75,7 +80,12 @@ class _MetaRepository:
 
     async def exists(self) -> bool:
         """해시 키가 존재하는지 확인한다."""
-        return bool(await self.redis.exists(self.keys.meta()))
+        return bool(
+            await cast(
+                Awaitable[int],
+                self.redis.exists(self.keys.meta()),
+            )
+        )
 
     async def set_initial(self, meta: ConnectionMetaDomain, ttl: int) -> None:
         """초기 메타 해시를 설정한다.
@@ -83,22 +93,37 @@ class _MetaRepository:
         - status/created_at/last_active/connection_id/exchange/region/request_type 저장
         - 키 TTL 설정
         """
-        await self.redis.hset(self.keys.meta(), mapping=meta.to_redis_mapping())
-        await self.redis.expire(self.keys.meta(), ttl)
+        await cast(
+            Awaitable[int],
+            self.redis.hset(self.keys.meta(), mapping=meta.to_redis_mapping()),
+        )
+        await cast(
+            Awaitable[bool],
+            self.redis.expire(self.keys.meta(), ttl),
+        )
 
     async def update_status(self, status: ConnectionStatus, ttl: int) -> None:
         """상태와 마지막 활성 시간을 갱신한다.
 
         Enum은 `.value`로 직렬화하여 저장한다.
         """
-        await self.redis.hset(
-            self.keys.meta(),
-            mapping={"status": status.value, "last_active": int(time.time())},
+        await cast(
+            Awaitable[int],
+            self.redis.hset(
+                self.keys.meta(),
+                mapping={"status": status.value, "last_active": int(time.time())},
+            ),
         )
-        await self.redis.expire(self.keys.meta(), ttl)
+        await cast(
+            Awaitable[bool],
+            self.redis.expire(self.keys.meta(), ttl),
+        )
 
     async def delete(self) -> int:
-        return await self.redis.delete(self.keys.meta())
+        return await cast(
+            Awaitable[int],
+            self.redis.delete(self.keys.meta()),
+        )
 
 
 class _SymbolsRepository:
@@ -110,7 +135,10 @@ class _SymbolsRepository:
 
     async def get_all(self) -> list[str]:
         """Set에서 모든 멤버를 읽어온다."""
-        members = await self.redis.smembers(self.keys.symbols())
+        members = await cast(
+            Awaitable[set[str | bytes]],
+            self.redis.smembers(self.keys.symbols()),
+        )
 
         def _decode(v: str | bytes) -> str:
             return v.decode() if isinstance(v, (bytes, bytearray)) else v
@@ -127,11 +155,17 @@ class _SymbolsRepository:
             "if ttl and ttl > 0 then redis.call('EXPIRE', key, ttl) end "
             "return 1"
         )
-        await self.redis.eval(lua, 1, self.keys.symbols(), ttl, *symbols)
+        await cast(
+            Awaitable[object],
+            cast(Any, self.redis).eval(lua, 1, self.keys.symbols(), ttl, *symbols),
+        )
 
     async def delete(self) -> int:
         """Set 키를 삭제한다."""
-        return await self.redis.delete(self.keys.symbols())
+        return await cast(
+            Awaitable[int],
+            self.redis.delete(self.keys.symbols()),
+        )
 
 
 class WebsocketConnectionCache:
@@ -252,9 +286,12 @@ class WebsocketConnectionCache:
             actual_ttl = ttl or redis_settings.default_ttl
             await self._meta.update_status(status, actual_ttl)
             # 심볼 키도 동일 TTL 유지 (키 빌더 사용)
-            await self.redis.expire(
-                self._keys.symbols(),
-                actual_ttl,
+            await cast(
+                Awaitable[bool],
+                self.redis.expire(
+                    self._keys.symbols(),
+                    actual_ttl,
+                ),
             )
             logger.info(
                 f"""

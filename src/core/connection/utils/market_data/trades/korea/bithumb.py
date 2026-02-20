@@ -50,13 +50,11 @@ class BithumbTradeParser(TradeParser):
         price = float(message["trade_price"])
         volume = float(message["trade_volume"])
 
-        return StandardTradeDTO(
-            code=message["code"],
-            trade_timestamp=float(message["trade_timestamp"]) / 1000.0,
-            trade_price=price,
-            trade_volume=volume,
-            ask_bid=1 if message["ask_bid"] == "BID" else -1,
-            sequential_id=str(message["sequential_id"]),
-            trade_amount=price * volume,
-            stream_type=stream_type,
-        )
+        return StandardTradeDTO.from_raw(code=message["code"],
+        trade_timestamp=float(message["trade_timestamp"]) / 1000.0,
+        trade_price=price,
+        trade_volume=volume,
+        ask_bid=1 if message["ask_bid"] == "BID" else -1,
+        sequential_id=str(message["sequential_id"]),
+        trade_amount=price * volume,
+        stream_type=stream_type,)

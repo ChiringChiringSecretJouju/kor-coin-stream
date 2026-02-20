@@ -1,6 +1,6 @@
 """Avro 직렬화/역직렬화 유틸리티
 
-confluent-kafka SerializationContext를 dataclass로 상속하여 Python 3.12 스타일로 개선합니다.
+confluent-kafka SerializationContext를 래핑하여 타입 안전한 컨텍스트를 제공합니다.
 """
 
 from __future__ import annotations
@@ -13,27 +13,6 @@ from confluent_kafka.serialization import (
 from confluent_kafka.serialization import (
     SerializationContext as BaseSerializationContext,
 )
-
-
-@dataclass(slots=True, frozen=True)
-class SerializationContext(BaseSerializationContext):
-    """
-    Avro 직렬화 컨텍스트 (dataclass 버전)
-
-    confluent-kafka의 SerializationContext를 상속하여 Python 3.12 dataclass 스타일로 개선.
-
-    slots=True: 메모리 최적화
-    frozen=True: 불변성 보장 (컨텍스트는 불변이어야 함)
-    """
-
-    topic: str
-    field: MessageField
-    headers: dict[str, bytes] | None = None
-
-    def __post_init__(self) -> None:
-        """데이터클래스 초기화 후 부모 클래스 초기화"""
-        # frozen=True로 인해 object.__setattr__ 사용
-        super().__init__(self.topic, self.field, self.headers)
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,18 +37,14 @@ def create_value_context(
     topic: str, headers: dict[str, bytes] | None = None
 ) -> AvroSerializationContext:
     """값 직렬화를 위한 컨텍스트 생성"""
-    return AvroSerializationContext(
-        topic=topic, field=MessageField.VALUE, headers=headers
-    )
+    return AvroSerializationContext(topic=topic, field=MessageField.VALUE, headers=headers)
 
 
 def create_key_context(
     topic: str, headers: dict[str, bytes] | None = None
 ) -> AvroSerializationContext:
     """키 직렬화를 위한 컨텍스트 생성"""
-    return AvroSerializationContext(
-        topic=topic, field=MessageField.KEY, headers=headers
-    )
+    return AvroSerializationContext(topic=topic, field=MessageField.KEY, headers=headers)
 
 
 # 타입 에일리어스
